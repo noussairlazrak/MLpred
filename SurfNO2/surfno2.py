@@ -13,6 +13,7 @@ from dateutil.relativedelta import relativedelta
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 from math import sqrt
+from tqdm import tqdm as tqdm
 
 M2_TEMPLATE = "/home/ftei-dsw/Projects/SurfNO2/data/M2/{c}/small/*.{c}.%Y%m*.nc4"
 COLLECTIONS = ["tavg1_2d_flx_Nx","tavg1_2d_lfo_Nx","tavg1_2d_slv_Nx"]
@@ -36,9 +37,9 @@ class ObsSite:
         return
 
 
-    def read_obs(self,**kwargs):
+    def read_obs(self,silent=False,**kwargs):
         '''Wrapper routine to read observations'''
-        obs = self._read_openaq(**kwargs)
+        obs = self._read_openaq(silent=silent,**kwargs)
         if obs is None:
             print('Warning: no observations found!')
             return
@@ -47,13 +48,16 @@ class ObsSite:
         ilat = np.round(obs['lat'].median(),2)
         ilon = np.round(obs['lon'].median(),2)
         iname = obs['location'].values[0]
-        print('Found {:d} observations for {:} (lon={:.2f}; lat={:.2f})'.format(obs.shape[0],iname,ilon,ilat))
+        if not silent:
+            print('Found {:d} observations for {:} (lon={:.2f}; lat={:.2f})'.format(obs.shape[0],iname,ilon,ilat))
         self._lat = ilat if self._lat is None else self._lat 
         self._lon = ilon if self._lon is None else self._lon 
         assert(ilat==self._lat)
         assert(ilon==self._lon)
         self._name = iname if self._name is None else self._name
-        assert(iname==self._name)
+        if iname != self._name:
+            print('Warning: new station name is {}, vs. previously {}'.format(iname,self._name))
+            self._name = iname
         self._obs = self._obs.merge(obs,how='outer') if self._obs is not None else obs
         return
 
@@ -70,7 +74,7 @@ class ObsSite:
         return
 
 
-    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.2,log=False,**kwargs):
+    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.2,log=False,silent=False,xgbparams={'booster':'gbtree'},**kwargs):
         '''Train XGBoost model using data in memory'''
         dat = self._merge(**kwargs)
         if dat is None:
@@ -88,9 +92,9 @@ class ObsSite:
             y = np.log(y)
         Xtrain, Xtest, ytrain, ytest = train_test_split( X, y, test_size=test_size)
         train = xgb.DMatrix(Xtrain,ytrain)
-        print('training model ...')
-        param = {'booster':'gbtree'}
-        bst = xgb.train(param,train)
+        if not silent:
+            print('training model ...')
+        bst = xgb.train(xgbparams,train)
         ptrain = bst.predict(xgb.DMatrix(Xtrain))
         ptest = bst.predict(xgb.DMatrix(Xtest))
         ytrainf = np.array(ytrain).flatten()
@@ -98,14 +102,17 @@ class ObsSite:
         if log:
             ytrainf = np.exp(ytrainf)
             ytestf  = np.exp(ytestf)
-        print('Training:')
-        print('r2 = {:.2f}'.format(r2_score(ytrainf,ptrain)))
-        print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytrainf,ptrain))/np.std(ytrainf)))
-        print('nmb = {:.2f}'.format(np.sum(ptrain-ytrainf)/np.sum(ytrainf)))
-        print('Test:')
-        print('r2 = {:.2f}'.format(r2_score(ytestf,ptest)))
-        print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytestf,ptest))/np.std(ytestf)))
-        print('nmb = {:.2f}'.format(np.sum(ptest-ytestf)/np.sum(ytestf)))
+            ptrain  = np.exp(ptrain)
+            ptest   = np.exp(ptest)
+        if not silent:
+            print('Training:')
+            print('r2 = {:.2f}'.format(r2_score(ytrainf,ptrain)))
+            print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytrainf,ptrain))/np.std(ytrainf)))
+            print('nmb = {:.2f}'.format(np.sum(ptrain-ytrainf)/np.sum(ytrainf)))
+            print('Test:')
+            print('r2 = {:.2f}'.format(r2_score(ytestf,ptest)))
+            print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytestf,ptest))/np.std(ytestf)))
+            print('nmb = {:.2f}'.format(np.sum(ptest-ytestf)/np.sum(ytestf)))
         self._bst = bst
         self._xcolumns = X.columns
         self._log = log
@@ -142,11 +149,6 @@ class ObsSite:
         # which are rounded to grid cell edges.
         ivars = [i for i in self._mod.columns if i not in mod_blacklist] 
         # interpolate MERRA-2 data to openaq time stamps
-        #dat = self._mod[ivars].merge(self._obs,on=['time'])
-        #new_date_index = self._obs['time']
-        #mod = self._mod[ivars].set_index('time')
-        #mod_resampled = mod.reindex(new_date_index,method='nearest').reset_index()
-        #dat = mod_resampled.merge(self._obs,on=['time']) 
         mdat = self._mod[ivars].merge(self._obs,on=['time'],how='outer').sort_values(by='time')
         idat = mdat.set_index('time').interpolate(method='slinear').reset_index()
         dat = idat.loc[idat['time'].isin(self._obs['time'])].copy()
@@ -169,7 +171,7 @@ class ObsSite:
         return
 
 
-    def _read_merra2(self,ilon,ilat,start,end,collections=COLLECTIONS,m2_template=M2_TEMPLATE,silent=False):
+    def _read_merra2(self,ilon,ilat,start,end,collections=COLLECTIONS,m2_template=M2_TEMPLATE,silent=False,remove_outlier=0):
         '''Read MERRA-2 data'''
         dfs = []
         for c in collections:
@@ -189,11 +191,11 @@ class ObsSite:
         return mod
 
 
-    def _read_openaq(self,para='no2',start=dt.datetime(2018,1,1),end=None):
+    def _read_openaq(self,para='no2',start=dt.datetime(2018,1,1),end=None,silent=False,normalize=False,**kwargs):
         '''Read OpenAQ observations and return in ppbv'''
         end = start+relativedelta(years=1) if end is None else end
         url = OPENAQ_TEMPLATE.replace('{ID}',str(self._id)).replace('{PARA}',para).replace('{Y1}',str(start.year)).replace('{M1}','{:02d}'.format(start.month)).replace('{D1}','{:02d}'.format(start.day)).replace('{Y2}',str(end.year)).replace('{M2}','{:02d}'.format(end.month)).replace('{D2}','{:02d}'.format(end.day))
-        allobs = read_openaq(url)
+        allobs = read_openaq(url,silent=silent,**kwargs)
         if allobs is None:
             return None
         obs = allobs.loc[(allobs['parameter']==para)&(~np.isnan(allobs['value']))].copy()
@@ -202,9 +204,9 @@ class ObsSite:
         obs.loc[obs['unit']=='µg/m³','value'] = obs.loc[obs['unit']=='µg/m³','value']*1./1.88
         # subset to relevant columns
         outobs = obs[['time','location','value']].copy()
+        if normalize:
+            outobs['value'] = (outobs['value']-outobs['value'].mean())/outobs['value'].std()
         if 'coordinates.latitude' in obs.columns and 'coordinates.longitude' in obs.columns:
-            #outobs['lat'] = [np.round(i,3) for i in obs['coordinates.latitude']]
-            #outobs['lon'] = [np.round(i,3) for i in obs['coordinates.longitude']]
             outobs['lat'] = obs['coordinates.latitude']
             outobs['lon'] = obs['coordinates.longitude']
         else:
@@ -212,9 +214,10 @@ class ObsSite:
         return outobs
 
 
-def read_openaq(url,reference_grade_only=True):
+def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0):
     '''Helper routine to read OpenAQ via API (from given url) and create a dataframe of the data'''
-    print('Quering {}'.format(url))
+    if not silent:
+        print('Quering {}'.format(url))
     r = requests.get( url )
     assert(r.status_code==200)
     allobs = pd.json_normalize(r.json()['results'])
@@ -225,15 +228,25 @@ def read_openaq(url,reference_grade_only=True):
     if reference_grade_only:
         allobs = allobs.loc[allobs['sensorType']=='reference grade'].copy()
     allobs['time'] = [dt.datetime.strptime(i,'%Y-%m-%dT%H:%M:%S+00:00') for i in allobs['date.utc']]
+    if remove_outlier > 0:
+        std = allobs['value'].std()
+        mn  = allobs['value'].mean()
+        minobs = mn - remove_outlier*std
+        maxobs = mn + remove_outlier*std
+        norig = allobs.shape[0]
+        allobs = allobs.loc[(allobs['value']>=minobs)&(allobs['value']<=maxobs)].copy()
+        if not silent:
+            nremoved = norig - allobs.shape[0]
+            print('removed {:.0f} of {:.0f} values because considered outliers ({:.2f}%)'.format(nremoved,norig,np.float(nremoved)/np.float(norig)*100.0))
     return allobs
 
 
-def filter_openaq_sites(year=2018,minobs=72):
+def filter_openaq_sites(year=2018,minobs=72,silent=True):
     '''Wrapper routine to get dataframe with average values for all sites with at least nobs observations for the first day of each month of the given year'''
     allmonths = []
-    for imonth in range(12):
+    for imonth in tqdm(range(12)):
         testurl = 'https://docs.openaq.org/v2/measurements?date_from={0:d}-{1:02d}-01T00%3A00%3A00%2B00%3A00&date_to={0:d}-{1:02d}-02T00%3A00%3A00%2B00%3A00&limit=100000&page=1&offset=0&sort=asc&parameter=no2&order_by=datetime'.format(year,imonth+1)
-        allmonths.append(read_openaq(testurl))
+        allmonths.append(read_openaq(testurl,silent=silent))
     tmp = pd.concat(allmonths)
     cnt = tmp.groupby(['locationId','unit']).count().reset_index()
     sites = list(cnt.loc[cnt.value>minobs,'locationId'].values)
@@ -257,12 +270,12 @@ def nsites_by_threshold(df,maxconc=50):
     return nsites
 
 
-def train_sites(site_ids,minobs=240,silent=False,log=False,**kwargs):
+def train_sites(site_ids,minobs=240,silent=True,log=False,xgbparams={"booster":"gbtree","eta":0.5},**kwargs):
     '''Train all sites listed in site_ids and that have at least minobs number of observations in the training window'''
     site_list = []
-    for i in site_ids:
+    for i in tqdm(site_ids):
         isite = ObsSite(location_id=i)
-        isite.read_obs(**kwargs)
+        isite.read_obs(silent=silent,**kwargs)
         if isite._obs is None:
             print('No observations found for site {}'.format(i))
             continue
@@ -270,15 +283,15 @@ def train_sites(site_ids,minobs=240,silent=False,log=False,**kwargs):
             print('Not enough observations found for site {}'.format(i))
             continue
         isite.read_mod(silent=silent)
-        rc = isite.train(mindat=minobs,log=log)
+        rc = isite.train(mindat=minobs,log=log,silent=silent,xgbparams=xgbparams)
         if rc==0:
             site_list.append(isite)
     return site_list
 
 
-def sites_get_ratio(**kwargs):
+def sites_get_ratio(site_list,silent=True,**kwargs):
     '''Get ratios between prediction and observation for each site in site_list'''
-    predictions = predict_sites(**kwargs)
+    predictions = predict_sites(site_list,silent=silent,**kwargs)
     siteIds = []; siteNames=[]
     siteLats = []; siteLons=[]
     ratios = []; meanObs=[]; meanPred=[]
@@ -297,11 +310,11 @@ def sites_get_ratio(**kwargs):
     return siteRatios
 
 
-def predict_sites(site_list,start,end):
+def predict_sites(site_list,start,end,silent=False):
     '''Predict concentrations at all sites in the list of ObsSite objects'''
     predictions = {}
-    for isite in site_list:
-        isite.read_obs_and_mod(start=start,end=end)
+    for isite in tqdm(site_list):
+        isite.read_obs_and_mod(start=start,end=end,silent=silent)
         df = isite.predict(start=start,end=end)
         predictions[isite._id] = {'name':isite._name,'lat':isite._lat,'lon':isite._lon,'prediction':df}
     return predictions
