@@ -7,6 +7,7 @@ import datetime as dt
 import xarray as xr
 import xgboost as xgb
 import plotly.express as px
+import plotly.graph_objects as go
 import requests
 from dateutil.relativedelta import relativedelta 
 from sklearn.model_selection import train_test_split
@@ -41,8 +42,10 @@ class ObsSite:
         if obs is None:
             print('Warning: no observations found!')
             return
-        ilat = obs['lat'].median()
-        ilon = obs['lon'].median()
+        if 'lat' not in obs.columns:
+            return
+        ilat = np.round(obs['lat'].median(),2)
+        ilon = np.round(obs['lon'].median(),2)
         iname = obs['location'].values[0]
         print('Found {:d} observations for {:} (lon={:.2f}; lat={:.2f})'.format(obs.shape[0],iname,ilon,ilat))
         self._lat = ilat if self._lat is None else self._lat 
@@ -67,14 +70,22 @@ class ObsSite:
         return
 
 
-    def train(self,target_var='value',skipvar=['time','location','lat','lon'],test_size=0.2,**kwargs):
+    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.2,log=False,**kwargs):
         '''Train XGBoost model using data in memory'''
-        dat = self._merge(**kwargs) 
+        dat = self._merge(**kwargs)
+        if dat is None:
+            return -2
+        if mindat is not None:
+            if dat.shape[0]<mindat:
+                print('Warning: not enough data - only {} rows vs. {} requested'.format(dat.shape[0],mindat))
+                return -1
         yvar = [target_var]
         blacklist = yvar + skipvar
         xvar = [i for i in dat.columns if i not in blacklist]
         X = dat[xvar]
         y = dat[yvar]
+        if log:
+            y = np.log(y)
         Xtrain, Xtest, ytrain, ytest = train_test_split( X, y, test_size=test_size)
         train = xgb.DMatrix(Xtrain,ytrain)
         print('training model ...')
@@ -84,6 +95,9 @@ class ObsSite:
         ptest = bst.predict(xgb.DMatrix(Xtest))
         ytrainf = np.array(ytrain).flatten()
         ytestf = np.array(ytest).flatten()
+        if log:
+            ytrainf = np.exp(ytrainf)
+            ytestf  = np.exp(ytestf)
         print('Training:')
         print('r2 = {:.2f}'.format(r2_score(ytrainf,ptrain)))
         print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytrainf,ptrain))/np.std(ytrainf)))
@@ -94,13 +108,18 @@ class ObsSite:
         print('nmb = {:.2f}'.format(np.sum(ptest-ytestf)/np.sum(ytestf)))
         self._bst = bst
         self._xcolumns = X.columns
-        return
+        self._log = log
+        return 0
 
 
     def predict(self,**kwargs):
         '''Make prediction for given time window and return predicted values along with observations'''
         dat = self._merge(**kwargs)
+        if dat is None:
+            return None
         pred = self._bst.predict(xgb.DMatrix(dat[self._xcolumns]))
+        if self._log:
+            pred = np.exp(pred)
         df = dat[['time','value']].copy()
         df['prediction'] = pred
         df.rename(columns={'value':'observation'},inplace=True)
@@ -116,14 +135,25 @@ class ObsSite:
 
     def _merge(self,start=None,end=None,mod_blacklist=['lat','lon']):
         '''Merge model and observation and limit to given time window'''
-        assert(self._mod is not None and self._obs is not None)
+        if self._mod is None or self._obs is None:
+            print('Warning: cannot merge because mod or obs is None')
+            return None
         # toss model variables that are blacklisted. By default, this is lat/lon,
         # which are rounded to grid cell edges.
         ivars = [i for i in self._mod.columns if i not in mod_blacklist] 
-        dat = self._mod[ivars].merge(self._obs,on=['time'])
+        # interpolate MERRA-2 data to openaq time stamps
+        #dat = self._mod[ivars].merge(self._obs,on=['time'])
+        #new_date_index = self._obs['time']
+        #mod = self._mod[ivars].set_index('time')
+        #mod_resampled = mod.reindex(new_date_index,method='nearest').reset_index()
+        #dat = mod_resampled.merge(self._obs,on=['time']) 
+        mdat = self._mod[ivars].merge(self._obs,on=['time'],how='outer').sort_values(by='time')
+        idat = mdat.set_index('time').interpolate(method='slinear').reset_index()
+        dat = idat.loc[idat['time'].isin(self._obs['time'])].copy()
         start = start if start is not None else dat['time'].min()
         end = end if end is not None else dat['time'].max()
-        idat = dat.loc[(dat['time']>=start)&(dat['time']<=end)]
+        testvar = ivars[-1]
+        idat = dat.loc[(dat['time']>=start)&(dat['time']<=end)&(~np.isnan(dat[testvar]))]
         return idat
 
 
@@ -135,16 +165,18 @@ class ObsSite:
         self._name = None
         self._obs  = None
         self._mod  = None
+        self._log  = False
         return
 
 
-    def _read_merra2(self,ilon,ilat,start,end,collections=COLLECTIONS,m2_template=M2_TEMPLATE):
+    def _read_merra2(self,ilon,ilat,start,end,collections=COLLECTIONS,m2_template=M2_TEMPLATE,silent=False):
         '''Read MERRA-2 data'''
         dfs = []
         for c in collections:
             template = m2_template.replace("{c}",c)
             ifiles = start.strftime(template)
-            print('Reading {}...'.format(c))
+            if not silent:
+                print('Reading {}...'.format(c))
             ids = xr.open_mfdataset(ifiles).sel(lon=ilon,lat=ilat,method='nearest').sel(time=slice(start,end)).load().to_dataframe().reset_index()
             dfs.append(ids)
         mod = dfs[0]
@@ -158,17 +190,181 @@ class ObsSite:
 
 
     def _read_openaq(self,para='no2',start=dt.datetime(2018,1,1),end=None):
-        '''Read OpenAQ observations'''
+        '''Read OpenAQ observations and return in ppbv'''
         end = start+relativedelta(years=1) if end is None else end
         url = OPENAQ_TEMPLATE.replace('{ID}',str(self._id)).replace('{PARA}',para).replace('{Y1}',str(start.year)).replace('{M1}','{:02d}'.format(start.month)).replace('{D1}','{:02d}'.format(start.day)).replace('{Y2}',str(end.year)).replace('{M2}','{:02d}'.format(end.month)).replace('{D2}','{:02d}'.format(end.day))
-        print('Quering {}'.format(url))
-        r = requests.get( url )
-        assert(r.status_code==200)
-        allobs = pd.json_normalize(r.json()['results'])
-        allobs['time'] = [dt.datetime.strptime(i,'%Y-%m-%dT%H:%M:%S+00:00') for i in allobs['date.utc']]
+        allobs = read_openaq(url)
+        if allobs is None:
+            return None
         obs = allobs.loc[(allobs['parameter']==para)&(~np.isnan(allobs['value']))].copy()
+        # convert everything to ppbv
         obs.loc[obs['unit']=='ppm','value'] = obs.loc[obs['unit']=='ppm','value']*1000.0
-        obs = obs[['time','location','value','coordinates.latitude','coordinates.longitude',]].copy()
-        obs['time'] = [i + dt.timedelta(minutes=30) for i in obs['time']]
-        obs.rename(columns={'coordinates.latitude':'lat','coordinates.longitude':'lon'},inplace=True)
-        return obs
+        obs.loc[obs['unit']=='µg/m³','value'] = obs.loc[obs['unit']=='µg/m³','value']*1./1.88
+        # subset to relevant columns
+        outobs = obs[['time','location','value']].copy()
+        if 'coordinates.latitude' in obs.columns and 'coordinates.longitude' in obs.columns:
+            #outobs['lat'] = [np.round(i,3) for i in obs['coordinates.latitude']]
+            #outobs['lon'] = [np.round(i,3) for i in obs['coordinates.longitude']]
+            outobs['lat'] = obs['coordinates.latitude']
+            outobs['lon'] = obs['coordinates.longitude']
+        else:
+            print('Warning: no coordinates in dataset')
+        return outobs
+
+
+def read_openaq(url,reference_grade_only=True):
+    '''Helper routine to read OpenAQ via API (from given url) and create a dataframe of the data'''
+    print('Quering {}'.format(url))
+    r = requests.get( url )
+    assert(r.status_code==200)
+    allobs = pd.json_normalize(r.json()['results'])
+    if allobs.shape[0]==0:
+        print('Warning: no OpenAQ data found for specified url')
+        return None
+    allobs = allobs.loc[(allobs['value']>=0.0)&(~np.isnan(allobs['value']))].copy()
+    if reference_grade_only:
+        allobs = allobs.loc[allobs['sensorType']=='reference grade'].copy()
+    allobs['time'] = [dt.datetime.strptime(i,'%Y-%m-%dT%H:%M:%S+00:00') for i in allobs['date.utc']]
+    return allobs
+
+
+def filter_openaq_sites(year=2018,minobs=72):
+    '''Wrapper routine to get dataframe with average values for all sites with at least nobs observations for the first day of each month of the given year'''
+    allmonths = []
+    for imonth in range(12):
+        testurl = 'https://docs.openaq.org/v2/measurements?date_from={0:d}-{1:02d}-01T00%3A00%3A00%2B00%3A00&date_to={0:d}-{1:02d}-02T00%3A00%3A00%2B00%3A00&limit=100000&page=1&offset=0&sort=asc&parameter=no2&order_by=datetime'.format(year,imonth+1)
+        allmonths.append(read_openaq(testurl))
+    tmp = pd.concat(allmonths)
+    cnt = tmp.groupby(['locationId','unit']).count().reset_index()
+    sites = list(cnt.loc[cnt.value>minobs,'locationId'].values)
+    subdf = tmp.loc[tmp['locationId'].isin(sites)].copy()
+    meandf = subdf.groupby(['locationId','unit']).mean().reset_index()
+    meandf.loc[meandf['unit']=='µg/m³','value'] = meandf.loc[meandf['unit']=='µg/m³','value']*1./1.88
+    meandf.loc[meandf['unit']=='ppm','value'] = meandf.loc[meandf['unit']=='ppm','value']*1000.
+    return meandf
+
+
+def nsites_by_threshold(df,maxconc=50):
+    '''Write number of sites with mean concentration above concentration threshold for concentrations ranging from 0 to maxconc ppbv'''
+    concrange = np.arange(maxconc+1)*1.0
+    ns = []
+    for ival in concrange: 
+        nsit = df.loc[df.value>ival].shape[0]
+        ns.append(nsit)
+    nsites = pd.DataFrame()
+    nsites['threshold'] = concrange 
+    nsites['nsites'] = ns
+    return nsites
+
+
+def train_sites(site_ids,minobs=240,silent=False,log=False,**kwargs):
+    '''Train all sites listed in site_ids and that have at least minobs number of observations in the training window'''
+    site_list = []
+    for i in site_ids:
+        isite = ObsSite(location_id=i)
+        isite.read_obs(**kwargs)
+        if isite._obs is None:
+            print('No observations found for site {}'.format(i))
+            continue
+        if isite._obs.shape[0] < minobs:
+            print('Not enough observations found for site {}'.format(i))
+            continue
+        isite.read_mod(silent=silent)
+        rc = isite.train(mindat=minobs,log=log)
+        if rc==0:
+            site_list.append(isite)
+    return site_list
+
+
+def sites_get_ratio(**kwargs):
+    '''Get ratios between prediction and observation for each site in site_list'''
+    predictions = predict_sites(**kwargs)
+    siteIds = []; siteNames=[]
+    siteLats = []; siteLons=[]
+    ratios = []; meanObs=[]; meanPred=[]
+    for p in predictions:
+        siteIds.append(p)
+        ip = predictions[p]
+        siteNames.append(ip['name'])
+        siteLats.append(ip['lat'])
+        siteLons.append(ip['lon'])
+        idf = ip['prediction']
+        ratios.append(idf['observation'].values.mean()/idf['prediction'].values.mean())
+        meanObs.append(idf['observation'].values.mean())
+        meanPred.append(idf['prediction'].values.mean())
+    siteRatios = pd.DataFrame({'Id':siteIds,'name':siteNames,'lat':siteLats,'lon':siteLons,'ratio':ratios,'obs':meanObs,'pred':meanPred})
+    siteRatios['relChange'] = (siteRatios['ratio']-1.0)*100.0
+    return siteRatios
+
+
+def predict_sites(site_list,start,end):
+    '''Predict concentrations at all sites in the list of ObsSite objects'''
+    predictions = {}
+    for isite in site_list:
+        isite.read_obs_and_mod(start=start,end=end)
+        df = isite.predict(start=start,end=end)
+        predictions[isite._id] = {'name':isite._name,'lat':isite._lat,'lon':isite._lon,'prediction':df}
+    return predictions
+
+
+def plot_deviation(siteRatios,title=None,minval=-30.,maxval=30.,mapbox_access_token=None):
+    '''Make global map showing deviation betweeen predictions and observations'''
+    siteRatios['text'] = ['{0:}, Pred={1:.2f}ppbv, Deviation={2:.2f}%'.format(i,j,k) for i,j,k in zip(siteRatios['name'],siteRatios['pred'],siteRatios['relChange'])]
+    fig = go.Figure(data=go.Scattermapbox(
+            lon = siteRatios['lon'],
+            lat = siteRatios['lat'],
+            text = siteRatios['text'],
+            mode = 'markers',
+            marker = go.scattermapbox.Marker(
+                size = siteRatios['pred'],
+                sizemode = 'area',
+                color = siteRatios['relChange'],
+                cmin = minval,
+                cmax = maxval,
+                colorscale = 'RdBu',
+                autocolorscale = False,
+                reversescale = True,
+                #line_color='rgb(40,40,40)',
+                #line_width=0.5,
+                colorbar_title='NO2 deviation',
+            ),
+            #name = siteRatios['name'],
+            ))
+    #fig.update_layout(mapbox_style="open-street-map")
+    fig.update_layout(hovermode='closest',
+                      mapbox_accesstoken=mapbox_access_token,
+                      mapbox_style='dark',
+                     )
+    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+    return fig
+
+
+def plot_deviation_default(siteRatios,title=None,minval=-30.,maxval=30.):
+    '''Make global map showing deviation betweeen predictions and observations'''
+    siteRatios['text'] = ['{0:}, Deviation={1:.2f}%'.format(i,j) for i,j in zip(siteRatios['name'],siteRatios['relChange'])]
+    fig = go.Figure(data=go.Scattergeo(
+            lon = siteRatios['lon'],
+            lat = siteRatios['lat'],
+            text = siteRatios['text'],
+            mode = 'markers',
+            marker = dict(
+                size = siteRatios['obs'],
+                sizemode = 'area',
+                color = siteRatios['relChange'],
+                cmin = minval,
+                cmax = maxval,
+                colorscale = 'RdBu',
+                autocolorscale = False,
+                reversescale = True,
+                line_color='rgb(40,40,40)',
+                line_width=0.5,
+                colorbar_title='NO2 deviation',
+            ),
+            ))
+    fig.update_layout(title_text = 'Test',
+                      showlegend = False,
+                      height=300,
+                      geo=dict(landcolor='rgb(217,217,217)'),
+                      margin={"r":0,"t":0,"l":0,"b":0})
+    return fig
+
