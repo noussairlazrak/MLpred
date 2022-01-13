@@ -221,6 +221,137 @@ class ObsSite:
         return outobs
 
 
+class ObsSiteList:
+    def __init__(self,ifile=None):
+        '''
+        Initialize ObsSiteList object (read from file if provided).
+        '''
+        self._site_list = None
+        if ifile is not None:
+            self.load(ifile)
+
+
+    def save(self,ofile='site_list.pkl'):
+        '''Write out a site_list, discarding all model and observation data beforehand (but keeping the trained XGBoost instances)'''
+        for isite in self._site_list:
+            isite._obs = None
+            isite._mod = None
+        pickle.dump( self._site_list, open(ofile,'wb'), protocol=4 )
+        print('{} sites written to {}'.format(len(self._site_list),ofile))
+        return
+    
+    
+    def load(self,ifile):
+        '''Reads a previously saved site list'''
+        self._site_list = pickle.load(open(ifile,'rb'))
+        print('Read {} sites from {}'.format(len(self._site_list),ifile))
+        return
+
+
+    def filter_sites(self,year=2018,minobs=72,minvalue=15.0,silent=True):
+        '''Wrapper routine to get dataframe with average values for all sites with at least nobs observations for the first day of each month of the given year'''
+        allmonths = []
+        for imonth in tqdm(range(12)):
+            testurl = 'https://docs.openaq.org/v2/measurements?date_from={0:d}-{1:02d}-01T00%3A00%3A00%2B00%3A00&date_to={0:d}-{1:02d}-02T00%3A00%3A00%2B00%3A00&limit=100000&page=1&offset=0&sort=asc&parameter=no2&order_by=datetime'.format(year,imonth+1)
+            allmonths.append(read_openaq(testurl,silent=silent))
+        tmp = pd.concat(allmonths)
+        cnt = tmp.groupby(['locationId','unit']).count().reset_index()
+        sites = list(cnt.loc[cnt.value>minobs,'locationId'].values)
+        subdf = tmp.loc[tmp['locationId'].isin(sites)].copy()
+        meandf = subdf.groupby(['locationId','unit']).mean().reset_index()
+        meandf.loc[meandf['unit']=='µg/m³','value'] = meandf.loc[meandf['unit']=='µg/m³','value']*1./1.88
+        meandf.loc[meandf['unit']=='ppm','value'] = meandf.loc[meandf['unit']=='ppm','value']*1000.
+        site_ids = list(meandf.loc[meandf['value']>=minvalue,'locationId'].values)
+        print('Found {} sites with average concentration above {} ppbv and more than {} observations'.format(len(site_ids),minvalue,minobs))
+        self._minvalue = minvalue
+        return site_ids 
+    
+    
+    def create_list(self,site_ids,minobs=240,silent=True,log=False,xgbparams={"booster":"gbtree","eta":0.5},**kwargs):
+        '''Create a list of observation sites by training all sites listed in site_ids that have at least minobs number of observations in the training window'''
+        self._site_list = []
+        for i in tqdm(site_ids):
+            isite = ObsSite(location_id=i,silent=silent)
+            isite.read_obs(**kwargs)
+            if isite._obs is None:
+                if not isite._silent:
+                    print('No observations found for site {}'.format(i))
+                continue
+            if isite._obs.shape[0] < minobs:
+                if not isite._silent:
+                    print('Not enough observations found for site {}'.format(i))
+                continue
+            isite.read_mod()
+            rc = isite.train(mindat=minobs,log=log,xgbparams=xgbparams)
+            if rc==0:
+                self._site_list.append(isite)
+        return 
+
+
+    def calc_ratios(self,start,end):
+        '''Get ratios between prediction and observation for each site in site_list'''
+        predictions = self.predict_sites(start,end)
+        siteIds = []; siteNames=[]
+        siteLats = []; siteLons=[]
+        ratios = []; meanObs=[]; meanPred=[]
+        for p in predictions:
+            ip = predictions[p]
+            idf = ip['prediction']
+            if idf is None:
+                continue
+            siteIds.append(p)
+            siteNames.append(ip['name'])
+            siteLats.append(ip['lat'])
+            siteLons.append(ip['lon'])
+            ratios.append(idf['observation'].values.mean()/idf['prediction'].values.mean())
+            meanObs.append(idf['observation'].values.mean())
+            meanPred.append(idf['prediction'].values.mean())
+        siteRatios = pd.DataFrame({'Id':siteIds,'name':siteNames,'lat':siteLats,'lon':siteLons,'ratio':ratios,'obs':meanObs,'pred':meanPred})
+        siteRatios['relChange'] = (siteRatios['ratio']-1.0)*100.0
+        return siteRatios
+    
+    
+    def predict_sites(self,start,end):
+        '''Predict concentrations at all sites in the list of ObsSite objects'''
+        predictions = {}
+        for isite in tqdm(self._site_list):
+            isite.read_obs_and_mod(start=start,end=end)
+            df = isite.predict(start=start,end=end)
+            predictions[isite._id] = {'name':isite._name,'lat':isite._lat,'lon':isite._lon,'prediction':df}
+        return predictions
+
+
+    def plot_deviation(self,siteRatios,title='NO2 deviation',minval=-30.,maxval=30.,mapbox_access_token=None):
+        '''Make global map showing deviation betweeen predictions and observations'''
+        siteRatios['text'] = ['{0:} (ID {1:}, Pred={2:.2f}ppbv, Deviation={3:.2f}%'.format(i,j,k,l) for i,j,k,l in zip(siteRatios['name'],siteRatios['Id'],siteRatios['pred'],siteRatios['relChange'])]
+        fig = go.Figure(data=go.Scattermapbox(
+                lon = siteRatios['lon'],
+                lat = siteRatios['lat'],
+                text = siteRatios['text'],
+                mode = 'markers',
+                marker = go.scattermapbox.Marker(
+                    size = siteRatios['pred'],
+                    sizemode = 'area',
+                    color = siteRatios['relChange'],
+                    cmin = minval,
+                    cmax = maxval,
+                    colorscale = 'RdBu',
+                    opacity = 0.8,
+                    autocolorscale = False,
+                    reversescale = True,
+                    colorbar_title=title,
+                ),
+                #name = siteRatios['name'],
+                ))
+        #fig.update_layout(mapbox_style="open-street-map")
+        fig.update_layout(hovermode='closest',
+                          mapbox_accesstoken=mapbox_access_token,
+                          mapbox_style='dark',
+                         )
+        fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+        return fig
+    
+    
 def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0):
     '''Helper routine to read OpenAQ via API (from given url) and create a dataframe of the data'''
     if not silent:
@@ -249,22 +380,6 @@ def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0):
     return allobs
 
 
-def filter_openaq_sites(year=2018,minobs=72,silent=True):
-    '''Wrapper routine to get dataframe with average values for all sites with at least nobs observations for the first day of each month of the given year'''
-    allmonths = []
-    for imonth in tqdm(range(12)):
-        testurl = 'https://docs.openaq.org/v2/measurements?date_from={0:d}-{1:02d}-01T00%3A00%3A00%2B00%3A00&date_to={0:d}-{1:02d}-02T00%3A00%3A00%2B00%3A00&limit=100000&page=1&offset=0&sort=asc&parameter=no2&order_by=datetime'.format(year,imonth+1)
-        allmonths.append(read_openaq(testurl,silent=silent))
-    tmp = pd.concat(allmonths)
-    cnt = tmp.groupby(['locationId','unit']).count().reset_index()
-    sites = list(cnt.loc[cnt.value>minobs,'locationId'].values)
-    subdf = tmp.loc[tmp['locationId'].isin(sites)].copy()
-    meandf = subdf.groupby(['locationId','unit']).mean().reset_index()
-    meandf.loc[meandf['unit']=='µg/m³','value'] = meandf.loc[meandf['unit']=='µg/m³','value']*1./1.88
-    meandf.loc[meandf['unit']=='ppm','value'] = meandf.loc[meandf['unit']=='ppm','value']*1000.
-    return meandf
-
-
 def nsites_by_threshold(df,maxconc=50):
     '''Write number of sites with mean concentration above concentration threshold for concentrations ranging from 0 to maxconc ppbv'''
     concrange = np.arange(maxconc+1)*1.0
@@ -278,93 +393,7 @@ def nsites_by_threshold(df,maxconc=50):
     return nsites
 
 
-def train_sites(site_ids,minobs=240,silent=True,log=False,xgbparams={"booster":"gbtree","eta":0.5},**kwargs):
-    '''Train all sites listed in site_ids and that have at least minobs number of observations in the training window'''
-    site_list = []
-    for i in tqdm(site_ids):
-        isite = ObsSite(location_id=i,silent=silent)
-        isite.read_obs(**kwargs)
-        if isite._obs is None:
-            if not isite._silent:
-                print('No observations found for site {}'.format(i))
-            continue
-        if isite._obs.shape[0] < minobs:
-            if not isite._silent:
-                print('Not enough observations found for site {}'.format(i))
-            continue
-        isite.read_mod()
-        rc = isite.train(mindat=minobs,log=log,xgbparams=xgbparams)
-        if rc==0:
-            site_list.append(isite)
-    return site_list
-
-
-def sites_get_ratio(site_list,**kwargs):
-    '''Get ratios between prediction and observation for each site in site_list'''
-    predictions = predict_sites(site_list,**kwargs)
-    siteIds = []; siteNames=[]
-    siteLats = []; siteLons=[]
-    ratios = []; meanObs=[]; meanPred=[]
-    for p in predictions:
-        ip = predictions[p]
-        idf = ip['prediction']
-        if idf is None:
-            continue
-        siteIds.append(p)
-        siteNames.append(ip['name'])
-        siteLats.append(ip['lat'])
-        siteLons.append(ip['lon'])
-        ratios.append(idf['observation'].values.mean()/idf['prediction'].values.mean())
-        meanObs.append(idf['observation'].values.mean())
-        meanPred.append(idf['prediction'].values.mean())
-    siteRatios = pd.DataFrame({'Id':siteIds,'name':siteNames,'lat':siteLats,'lon':siteLons,'ratio':ratios,'obs':meanObs,'pred':meanPred})
-    siteRatios['relChange'] = (siteRatios['ratio']-1.0)*100.0
-    return siteRatios
-
-
-def predict_sites(site_list,start,end):
-    '''Predict concentrations at all sites in the list of ObsSite objects'''
-    predictions = {}
-    for isite in tqdm(site_list):
-        isite.read_obs_and_mod(start=start,end=end)
-        df = isite.predict(start=start,end=end)
-        predictions[isite._id] = {'name':isite._name,'lat':isite._lat,'lon':isite._lon,'prediction':df}
-    return predictions
-
-
-def plot_deviation(siteRatios,title=None,minval=-30.,maxval=30.,mapbox_access_token=None):
-    '''Make global map showing deviation betweeen predictions and observations'''
-    siteRatios['text'] = ['{0:}, Pred={1:.2f}ppbv, Deviation={2:.2f}%'.format(i,j,k) for i,j,k in zip(siteRatios['name'],siteRatios['pred'],siteRatios['relChange'])]
-    fig = go.Figure(data=go.Scattermapbox(
-            lon = siteRatios['lon'],
-            lat = siteRatios['lat'],
-            text = siteRatios['text'],
-            mode = 'markers',
-            marker = go.scattermapbox.Marker(
-                size = siteRatios['pred'],
-                sizemode = 'area',
-                color = siteRatios['relChange'],
-                cmin = minval,
-                cmax = maxval,
-                colorscale = 'RdBu',
-                autocolorscale = False,
-                reversescale = True,
-                #line_color='rgb(40,40,40)',
-                #line_width=0.5,
-                colorbar_title='NO2 deviation',
-            ),
-            #name = siteRatios['name'],
-            ))
-    #fig.update_layout(mapbox_style="open-street-map")
-    fig.update_layout(hovermode='closest',
-                      mapbox_accesstoken=mapbox_access_token,
-                      mapbox_style='dark',
-                     )
-    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
-    return fig
-
-
-def plot_deviation_default(siteRatios,title=None,minval=-30.,maxval=30.):
+def plot_deviation_orig(siteRatios,title=None,minval=-30.,maxval=30.):
     '''Make global map showing deviation betweeen predictions and observations'''
     siteRatios['text'] = ['{0:}, Deviation={1:.2f}%'.format(i,j) for i,j in zip(siteRatios['name'],siteRatios['relChange'])]
     fig = go.Figure(data=go.Scattergeo(
@@ -394,17 +423,3 @@ def plot_deviation_default(siteRatios,title=None,minval=-30.,maxval=30.):
     return fig
 
 
-def save_site_list(site_list,ofile='site_list.pkl'):
-    '''Write out a site_list, discarding all model and observation data beforehand (but keeping the trained XGBoost instances'''
-    for isite in site_list:
-        isite._obs = None
-        isite._mod = None
-    pickle.dump( site_list, open(ofile,'wb'), protocol=4 )
-    print('{} sites written to {}'.format(len(site_list),ofile))
-    return
-
-
-def load_site_list(ifile):
-    '''Reads a previously saved site list'''
-    site_list = pickle.load(open(ifile,'rb'))
-    return site_list
