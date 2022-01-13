@@ -9,6 +9,7 @@ import xgboost as xgb
 import plotly.express as px
 import plotly.graph_objects as go
 import requests
+import pickle
 from dateutil.relativedelta import relativedelta 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
@@ -21,11 +22,11 @@ OPENAQ_TEMPLATE = 'https://docs.openaq.org/v2/measurements?date_from={Y1}-{M1}-0
 
 
 class ObsSite:
-    def __init__(self,location_id,read_obs=False,**kwargs):
+    def __init__(self,location_id,read_obs=False,silent=False,**kwargs):
         '''
         Initialize ObsSite object.
         '''
-        self._init_site(location_id)
+        self._init_site(location_id,silent)
         if read_obs:
             self.read_obs(**kwargs)
 
@@ -37,25 +38,26 @@ class ObsSite:
         return
 
 
-    def read_obs(self,silent=False,**kwargs):
+    def read_obs(self,**kwargs):
         '''Wrapper routine to read observations'''
-        obs = self._read_openaq(silent=silent,**kwargs)
+        obs = self._read_openaq(**kwargs)
         if obs is None:
-            print('Warning: no observations found!')
+            if not self._silent:
+                print('Warning: no observations found!')
             return
         if 'lat' not in obs.columns:
             return
         ilat = np.round(obs['lat'].median(),2)
         ilon = np.round(obs['lon'].median(),2)
         iname = obs['location'].values[0]
-        if not silent:
+        if not self._silent:
             print('Found {:d} observations for {:} (lon={:.2f}; lat={:.2f})'.format(obs.shape[0],iname,ilon,ilat))
         self._lat = ilat if self._lat is None else self._lat 
         self._lon = ilon if self._lon is None else self._lon 
         assert(ilat==self._lat)
         assert(ilon==self._lon)
         self._name = iname if self._name is None else self._name
-        if iname != self._name:
+        if iname != self._name and not self._silent:
             print('Warning: new station name is {}, vs. previously {}'.format(iname,self._name))
             self._name = iname
         self._obs = self._obs.merge(obs,how='outer') if self._obs is not None else obs
@@ -74,7 +76,7 @@ class ObsSite:
         return
 
 
-    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.2,log=False,silent=False,xgbparams={'booster':'gbtree'},**kwargs):
+    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.2,log=False,xgbparams={'booster':'gbtree'},**kwargs):
         '''Train XGBoost model using data in memory'''
         dat = self._merge(**kwargs)
         if dat is None:
@@ -92,7 +94,7 @@ class ObsSite:
             y = np.log(y)
         Xtrain, Xtest, ytrain, ytest = train_test_split( X, y, test_size=test_size)
         train = xgb.DMatrix(Xtrain,ytrain)
-        if not silent:
+        if not self._silent:
             print('training model ...')
         bst = xgb.train(xgbparams,train)
         ptrain = bst.predict(xgb.DMatrix(Xtrain))
@@ -104,7 +106,7 @@ class ObsSite:
             ytestf  = np.exp(ytestf)
             ptrain  = np.exp(ptrain)
             ptest   = np.exp(ptest)
-        if not silent:
+        if not self._silent:
             print('Training:')
             print('r2 = {:.2f}'.format(r2_score(ytrainf,ptrain)))
             print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytrainf,ptrain))/np.std(ytrainf)))
@@ -143,7 +145,8 @@ class ObsSite:
     def _merge(self,start=None,end=None,mod_blacklist=['lat','lon']):
         '''Merge model and observation and limit to given time window'''
         if self._mod is None or self._obs is None:
-            print('Warning: cannot merge because mod or obs is None')
+            if not self._silent:
+                print('Warning: cannot merge because mod or obs is None')
             return None
         # toss model variables that are blacklisted. By default, this is lat/lon,
         # which are rounded to grid cell edges.
@@ -156,28 +159,31 @@ class ObsSite:
         end = end if end is not None else dat['time'].max()
         testvar = ivars[-1]
         idat = dat.loc[(dat['time']>=start)&(dat['time']<=end)&(~np.isnan(dat[testvar]))]
+        if idat.shape[0]==0:
+            idat = None
         return idat
 
 
-    def _init_site(self,location_id):
+    def _init_site(self,location_id,silent):
         '''Create an empty site object'''
-        self._id   = location_id
-        self._lat  = None
-        self._lon  = None
-        self._name = None
-        self._obs  = None
-        self._mod  = None
-        self._log  = False
+        self._id     = location_id
+        self._silent = silent 
+        self._lat    = None
+        self._lon    = None
+        self._name   = None
+        self._obs    = None
+        self._mod    = None
+        self._log    = False
         return
 
 
-    def _read_merra2(self,ilon,ilat,start,end,collections=COLLECTIONS,m2_template=M2_TEMPLATE,silent=False,remove_outlier=0):
+    def _read_merra2(self,ilon,ilat,start,end,collections=COLLECTIONS,m2_template=M2_TEMPLATE,remove_outlier=0):
         '''Read MERRA-2 data'''
         dfs = []
         for c in collections:
             template = m2_template.replace("{c}",c)
             ifiles = start.strftime(template)
-            if not silent:
+            if not self._silent:
                 print('Reading {}...'.format(c))
             ids = xr.open_mfdataset(ifiles).sel(lon=ilon,lat=ilat,method='nearest').sel(time=slice(start,end)).load().to_dataframe().reset_index()
             dfs.append(ids)
@@ -191,11 +197,11 @@ class ObsSite:
         return mod
 
 
-    def _read_openaq(self,para='no2',start=dt.datetime(2018,1,1),end=None,silent=False,normalize=False,**kwargs):
+    def _read_openaq(self,para='no2',start=dt.datetime(2018,1,1),end=None,normalize=False,**kwargs):
         '''Read OpenAQ observations and return in ppbv'''
         end = start+relativedelta(years=1) if end is None else end
         url = OPENAQ_TEMPLATE.replace('{ID}',str(self._id)).replace('{PARA}',para).replace('{Y1}',str(start.year)).replace('{M1}','{:02d}'.format(start.month)).replace('{D1}','{:02d}'.format(start.day)).replace('{Y2}',str(end.year)).replace('{M2}','{:02d}'.format(end.month)).replace('{D2}','{:02d}'.format(end.day))
-        allobs = read_openaq(url,silent=silent,**kwargs)
+        allobs = read_openaq(url,silent=self._silent,**kwargs)
         if allobs is None:
             return None
         obs = allobs.loc[(allobs['parameter']==para)&(~np.isnan(allobs['value']))].copy()
@@ -210,7 +216,8 @@ class ObsSite:
             outobs['lat'] = obs['coordinates.latitude']
             outobs['lon'] = obs['coordinates.longitude']
         else:
-            print('Warning: no coordinates in dataset')
+            if not self._silent:
+                print('Warning: no coordinates in dataset')
         return outobs
 
 
@@ -222,7 +229,8 @@ def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0):
     assert(r.status_code==200)
     allobs = pd.json_normalize(r.json()['results'])
     if allobs.shape[0]==0:
-        print('Warning: no OpenAQ data found for specified url')
+        if not silent:
+            print('Warning: no OpenAQ data found for specified url')
         return None
     allobs = allobs.loc[(allobs['value']>=0.0)&(~np.isnan(allobs['value']))].copy()
     if reference_grade_only:
@@ -274,34 +282,38 @@ def train_sites(site_ids,minobs=240,silent=True,log=False,xgbparams={"booster":"
     '''Train all sites listed in site_ids and that have at least minobs number of observations in the training window'''
     site_list = []
     for i in tqdm(site_ids):
-        isite = ObsSite(location_id=i)
-        isite.read_obs(silent=silent,**kwargs)
+        isite = ObsSite(location_id=i,silent=silent)
+        isite.read_obs(**kwargs)
         if isite._obs is None:
-            print('No observations found for site {}'.format(i))
+            if not isite._silent:
+                print('No observations found for site {}'.format(i))
             continue
         if isite._obs.shape[0] < minobs:
-            print('Not enough observations found for site {}'.format(i))
+            if not isite._silent:
+                print('Not enough observations found for site {}'.format(i))
             continue
-        isite.read_mod(silent=silent)
-        rc = isite.train(mindat=minobs,log=log,silent=silent,xgbparams=xgbparams)
+        isite.read_mod()
+        rc = isite.train(mindat=minobs,log=log,xgbparams=xgbparams)
         if rc==0:
             site_list.append(isite)
     return site_list
 
 
-def sites_get_ratio(site_list,silent=True,**kwargs):
+def sites_get_ratio(site_list,**kwargs):
     '''Get ratios between prediction and observation for each site in site_list'''
-    predictions = predict_sites(site_list,silent=silent,**kwargs)
+    predictions = predict_sites(site_list,**kwargs)
     siteIds = []; siteNames=[]
     siteLats = []; siteLons=[]
     ratios = []; meanObs=[]; meanPred=[]
     for p in predictions:
-        siteIds.append(p)
         ip = predictions[p]
+        idf = ip['prediction']
+        if idf is None:
+            continue
+        siteIds.append(p)
         siteNames.append(ip['name'])
         siteLats.append(ip['lat'])
         siteLons.append(ip['lon'])
-        idf = ip['prediction']
         ratios.append(idf['observation'].values.mean()/idf['prediction'].values.mean())
         meanObs.append(idf['observation'].values.mean())
         meanPred.append(idf['prediction'].values.mean())
@@ -310,11 +322,11 @@ def sites_get_ratio(site_list,silent=True,**kwargs):
     return siteRatios
 
 
-def predict_sites(site_list,start,end,silent=False):
+def predict_sites(site_list,start,end):
     '''Predict concentrations at all sites in the list of ObsSite objects'''
     predictions = {}
     for isite in tqdm(site_list):
-        isite.read_obs_and_mod(start=start,end=end,silent=silent)
+        isite.read_obs_and_mod(start=start,end=end)
         df = isite.predict(start=start,end=end)
         predictions[isite._id] = {'name':isite._name,'lat':isite._lat,'lon':isite._lon,'prediction':df}
     return predictions
@@ -381,3 +393,18 @@ def plot_deviation_default(siteRatios,title=None,minval=-30.,maxval=30.):
                       margin={"r":0,"t":0,"l":0,"b":0})
     return fig
 
+
+def save_site_list(site_list,ofile='site_list.pkl'):
+    '''Write out a site_list, discarding all model and observation data beforehand (but keeping the trained XGBoost instances'''
+    for isite in site_list:
+        isite._obs = None
+        isite._mod = None
+    pickle.dump( site_list, open(ofile,'wb'), protocol=4 )
+    print('{} sites written to {}'.format(len(site_list),ofile))
+    return
+
+
+def load_site_list(ifile):
+    '''Reads a previously saved site list'''
+    site_list = pickle.load(open(ifile,'rb'))
+    return site_list
