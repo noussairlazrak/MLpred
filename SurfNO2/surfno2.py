@@ -16,210 +16,13 @@ from sklearn.metrics import mean_squared_error, r2_score
 from math import sqrt
 from tqdm import tqdm as tqdm
 
+ZARR_TEMPLATE = "geos-cf/zarr/geos-cf.met_tavg_1hr_g1440x721_x1.zarr"
+OPENDAP_TEMPLATE = "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/fcast/met_tavg_1hr_g1440x721_x1.latest"
 M2_TEMPLATE = "/home/ftei-dsw/Projects/SurfNO2/data/M2/{c}/small/*.{c}.%Y%m*.nc4"
-COLLECTIONS = ["tavg1_2d_flx_Nx","tavg1_2d_lfo_Nx","tavg1_2d_slv_Nx"]
+M2_COLLECTIONS = ["tavg1_2d_flx_Nx","tavg1_2d_lfo_Nx","tavg1_2d_slv_Nx"]
 OPENAQ_TEMPLATE = 'https://docs.openaq.org/v2/measurements?date_from={Y1}-{M1}-01T00%3A00%3A00%2B00%3A00&date_to={Y2}-{M2}-01T00%3A00%3A00%2B00%3A00&limit=10000&page=1&offset=0&sort=asc&radius=1000&location_id={ID}&parameter={PARA}&order_by=datetime'
 
-
-class ObsSite:
-    def __init__(self,location_id,read_obs=False,silent=False,**kwargs):
-        '''
-        Initialize ObsSite object.
-        '''
-        self._init_site(location_id,silent)
-        if read_obs:
-            self.read_obs(**kwargs)
-
-
-    def read_obs_and_mod(self,**kwargs):
-        '''Convenience wrapper to read both observations and model data'''
-        self.read_obs(**kwargs)
-        self.read_mod(**kwargs)
-        return
-
-
-    def read_obs(self,**kwargs):
-        '''Wrapper routine to read observations'''
-        obs = self._read_openaq(**kwargs)
-        if obs is None:
-            if not self._silent:
-                print('Warning: no observations found!')
-            return
-        if 'lat' not in obs.columns:
-            return
-        ilat = np.round(obs['lat'].median(),2)
-        ilon = np.round(obs['lon'].median(),2)
-        iname = obs['location'].values[0]
-        if not self._silent:
-            print('Found {:d} observations for {:} (lon={:.2f}; lat={:.2f})'.format(obs.shape[0],iname,ilon,ilat))
-        self._lat = ilat if self._lat is None else self._lat 
-        self._lon = ilon if self._lon is None else self._lon 
-        assert(ilat==self._lat)
-        assert(ilon==self._lon)
-        self._name = iname if self._name is None else self._name
-        if iname != self._name and not self._silent:
-            print('Warning: new station name is {}, vs. previously {}'.format(iname,self._name))
-            self._name = iname
-        self._obs = self._obs.merge(obs,how='outer') if self._obs is not None else obs
-        return
-
-
-    def read_mod(self,**kwargs):
-        '''Wrapper routine to read model data'''
-        assert(self._lon is not None and self._lat is not None)
-        if 'start' not in kwargs:
-            kwargs['start'] = self._obs['time'].min()
-        if 'end' not in kwargs:
-            kwargs['end'] = self._obs['time'].max()
-        mod = self._read_merra2(self._lon,self._lat,**kwargs)
-        self._mod = self._mod.merge(mod,how='outer') if self._mod is not None else mod
-        return
-
-
-    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.2,log=False,xgbparams={'booster':'gbtree'},**kwargs):
-        '''Train XGBoost model using data in memory'''
-        dat = self._merge(**kwargs)
-        if dat is None:
-            return -2
-        if mindat is not None:
-            if dat.shape[0]<mindat:
-                print('Warning: not enough data - only {} rows vs. {} requested'.format(dat.shape[0],mindat))
-                return -1
-        yvar = [target_var]
-        blacklist = yvar + skipvar
-        xvar = [i for i in dat.columns if i not in blacklist]
-        X = dat[xvar]
-        y = dat[yvar]
-        if log:
-            y = np.log(y)
-        Xtrain, Xtest, ytrain, ytest = train_test_split( X, y, test_size=test_size)
-        train = xgb.DMatrix(Xtrain,ytrain)
-        if not self._silent:
-            print('training model ...')
-        bst = xgb.train(xgbparams,train)
-        ptrain = bst.predict(xgb.DMatrix(Xtrain))
-        ptest = bst.predict(xgb.DMatrix(Xtest))
-        ytrainf = np.array(ytrain).flatten()
-        ytestf = np.array(ytest).flatten()
-        if log:
-            ytrainf = np.exp(ytrainf)
-            ytestf  = np.exp(ytestf)
-            ptrain  = np.exp(ptrain)
-            ptest   = np.exp(ptest)
-        if not self._silent:
-            print('Training:')
-            print('r2 = {:.2f}'.format(r2_score(ytrainf,ptrain)))
-            print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytrainf,ptrain))/np.std(ytrainf)))
-            print('nmb = {:.2f}'.format(np.sum(ptrain-ytrainf)/np.sum(ytrainf)))
-            print('Test:')
-            print('r2 = {:.2f}'.format(r2_score(ytestf,ptest)))
-            print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytestf,ptest))/np.std(ytestf)))
-            print('nmb = {:.2f}'.format(np.sum(ptest-ytestf)/np.sum(ytestf)))
-        self._bst = bst
-        self._xcolumns = X.columns
-        self._log = log
-        return 0
-
-
-    def predict(self,**kwargs):
-        '''Make prediction for given time window and return predicted values along with observations'''
-        dat = self._merge(**kwargs)
-        if dat is None:
-            return None
-        pred = self._bst.predict(xgb.DMatrix(dat[self._xcolumns]))
-        if self._log:
-            pred = np.exp(pred)
-        df = dat[['time','value']].copy()
-        df['prediction'] = pred
-        df.rename(columns={'value':'observation'},inplace=True)
-        return df
-
-
-    def plot(self,df,**kwargs):
-        '''Make plot of prediction vs. observation, as generated by self.predict()'''
-        title = 'Site = {0} ({1:.2f}N, {2:.2f}E)'.format(self._name,self._lat,self._lon)
-        fig = px.line(df,x='time',y=['observation','prediction'],labels={'value':r'$\text{NO}_{2}\,[\text{ppbv}]$'},title=title)
-        return fig
-
-
-    def _merge(self,start=None,end=None,mod_blacklist=['lat','lon']):
-        '''Merge model and observation and limit to given time window'''
-        if self._mod is None or self._obs is None:
-            if not self._silent:
-                print('Warning: cannot merge because mod or obs is None')
-            return None
-        # toss model variables that are blacklisted. By default, this is lat/lon,
-        # which are rounded to grid cell edges.
-        ivars = [i for i in self._mod.columns if i not in mod_blacklist] 
-        # interpolate MERRA-2 data to openaq time stamps
-        mdat = self._mod[ivars].merge(self._obs,on=['time'],how='outer').sort_values(by='time')
-        idat = mdat.set_index('time').interpolate(method='slinear').reset_index()
-        dat = idat.loc[idat['time'].isin(self._obs['time'])].copy()
-        start = start if start is not None else dat['time'].min()
-        end = end if end is not None else dat['time'].max()
-        testvar = ivars[-1]
-        idat = dat.loc[(dat['time']>=start)&(dat['time']<=end)&(~np.isnan(dat[testvar]))]
-        if idat.shape[0]==0:
-            idat = None
-        return idat
-
-
-    def _init_site(self,location_id,silent):
-        '''Create an empty site object'''
-        self._id     = location_id
-        self._silent = silent 
-        self._lat    = None
-        self._lon    = None
-        self._name   = None
-        self._obs    = None
-        self._mod    = None
-        self._log    = False
-        return
-
-
-    def _read_merra2(self,ilon,ilat,start,end,collections=COLLECTIONS,m2_template=M2_TEMPLATE,remove_outlier=0):
-        '''Read MERRA-2 data'''
-        dfs = []
-        for c in collections:
-            template = m2_template.replace("{c}",c)
-            ifiles = start.strftime(template)
-            if not self._silent:
-                print('Reading {}...'.format(c))
-            ids = xr.open_mfdataset(ifiles).sel(lon=ilon,lat=ilat,method='nearest').sel(time=slice(start,end)).load().to_dataframe().reset_index()
-            dfs.append(ids)
-        mod = dfs[0]
-        for d in dfs[1:]:
-            mod = mod.merge(d,on=['time','lat','lon'])
-        mod['time'] = [pd.to_datetime(i) for i in mod['time']]
-        mod['month'] = [i.month for i in mod['time']]
-        mod['hour'] = [i.hour for i in mod['time']]
-        mod['weekday'] = [i.weekday() for i in mod['time']]
-        return mod
-
-
-    def _read_openaq(self,para='no2',start=dt.datetime(2018,1,1),end=None,normalize=False,**kwargs):
-        '''Read OpenAQ observations and return in ppbv'''
-        end = start+relativedelta(years=1) if end is None else end
-        url = OPENAQ_TEMPLATE.replace('{ID}',str(self._id)).replace('{PARA}',para).replace('{Y1}',str(start.year)).replace('{M1}','{:02d}'.format(start.month)).replace('{D1}','{:02d}'.format(start.day)).replace('{Y2}',str(end.year)).replace('{M2}','{:02d}'.format(end.month)).replace('{D2}','{:02d}'.format(end.day))
-        allobs = read_openaq(url,silent=self._silent,**kwargs)
-        if allobs is None:
-            return None
-        obs = allobs.loc[(allobs['parameter']==para)&(~np.isnan(allobs['value']))].copy()
-        # convert everything to ppbv
-        obs.loc[obs['unit']=='ppm','value'] = obs.loc[obs['unit']=='ppm','value']*1000.0
-        obs.loc[obs['unit']=='µg/m³','value'] = obs.loc[obs['unit']=='µg/m³','value']*1./1.88
-        # subset to relevant columns
-        outobs = obs[['time','location','value']].copy()
-        if normalize:
-            outobs['value'] = (outobs['value']-outobs['value'].mean())/outobs['value'].std()
-        if 'coordinates.latitude' in obs.columns and 'coordinates.longitude' in obs.columns:
-            outobs['lat'] = obs['coordinates.latitude']
-            outobs['lon'] = obs['coordinates.longitude']
-        else:
-            if not self._silent:
-                print('Warning: no coordinates in dataset')
-        return outobs
-
+PPB2UGM3 = {'no2':1.88,'o3':1.97}
 
 class ObsSiteList:
     def __init__(self,ifile=None):
@@ -267,11 +70,11 @@ class ObsSiteList:
         return site_ids 
     
     
-    def create_list(self,site_ids,minobs=240,silent=True,log=False,xgbparams={"booster":"gbtree","eta":0.5},**kwargs):
+    def create_list(self,site_ids,minobs=240,silent=True,model_source='nc4',log=False,xgbparams={"booster":"gbtree","eta":0.5},**kwargs):
         '''Create a list of observation sites by training all sites listed in site_ids that have at least minobs number of observations in the training window'''
         self._site_list = []
         for i in tqdm(site_ids):
-            isite = ObsSite(location_id=i,silent=silent)
+            isite = ObsSite(location_id=i,silent=silent,model_source=model_source)
             isite.read_obs(**kwargs)
             if isite._obs is None:
                 if not isite._silent:
@@ -350,9 +153,243 @@ class ObsSiteList:
                          )
         fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
         return fig
-    
-    
-def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0):
+
+
+class ObsSite:
+    def __init__(self,location_id,read_obs=False,silent=False,model_source='nc4',species='no2',**kwargs):
+        '''
+        Initialize ObsSite object.
+        '''
+        self._init_site(location_id,species,silent,model_source)
+        if read_obs:
+            self.read_obs(**kwargs)
+
+
+    def read_obs_and_mod(self,**kwargs):
+        '''Convenience wrapper to read both observations and model data'''
+        self.read_obs(**kwargs)
+        self.read_mod(**kwargs)
+        return
+
+
+    def read_obs(self,**kwargs):
+        '''Wrapper routine to read observations'''
+        obs = self._read_openaq(**kwargs)
+        if obs is None:
+            if not self._silent:
+                print('Warning: no observations found!')
+            return
+        if 'lat' not in obs.columns:
+            return
+        ilat = np.round(obs['lat'].median(),2)
+        ilon = np.round(obs['lon'].median(),2)
+        iname = obs['location'].values[0]
+        if not self._silent:
+            print('Found {:d} observations for {:} (lon={:.2f}; lat={:.2f})'.format(obs.shape[0],iname,ilon,ilat))
+        self._lat = ilat if self._lat is None else self._lat 
+        self._lon = ilon if self._lon is None else self._lon 
+        assert(ilat==self._lat)
+        assert(ilon==self._lon)
+        self._name = iname if self._name is None else self._name
+        if iname != self._name and not self._silent:
+            print('Warning: new station name is {}, vs. previously {}'.format(iname,self._name))
+            self._name = iname
+        self._obs = self._obs.merge(obs,how='outer') if self._obs is not None else obs
+        return
+
+
+    def read_mod(self,**kwargs):
+        '''Wrapper routine to read model data'''
+        assert(self._lon is not None and self._lat is not None)
+        if 'start' not in kwargs:
+            kwargs['start'] = self._obs['time'].min()
+        if 'end' not in kwargs:
+            kwargs['end'] = self._obs['time'].max()
+        mod = self._read_model(self._lon,self._lat,**kwargs)
+        self._mod = self._mod.merge(mod,how='outer') if self._mod is not None else mod
+        return
+
+
+    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.2,log=False,xgbparams={'booster':'gbtree'},**kwargs):
+        '''Train XGBoost model using data in memory'''
+        dat = self._merge(**kwargs)
+        if dat is None:
+            return -2
+        if mindat is not None:
+            if dat.shape[0]<mindat:
+                print('Warning: not enough data - only {} rows vs. {} requested'.format(dat.shape[0],mindat))
+                return -1
+        yvar = [target_var]
+        blacklist = yvar + skipvar
+        xvar = [i for i in dat.columns if i not in blacklist]
+        X = dat[xvar]
+        y = dat[yvar]
+        if log:
+            y = np.log(y)
+        Xtrain, Xtest, ytrain, ytest = train_test_split( X, y, test_size=test_size)
+        train = xgb.DMatrix(Xtrain,ytrain)
+        if not self._silent:
+            print('training model ...')
+        bst = xgb.train(xgbparams,train)
+        ptrain = bst.predict(xgb.DMatrix(Xtrain))
+        ptest = bst.predict(xgb.DMatrix(Xtest))
+        ytrainf = np.array(ytrain).flatten()
+        ytestf = np.array(ytest).flatten()
+        if log:
+            ytrainf = np.exp(ytrainf)
+            ytestf  = np.exp(ytestf)
+            ptrain  = np.exp(ptrain)
+            ptest   = np.exp(ptest)
+        if not self._silent:
+            print('Training:')
+            print('r2 = {:.2f}'.format(r2_score(ytrainf,ptrain)))
+            print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytrainf,ptrain))/np.std(ytrainf)))
+            print('nmb = {:.2f}'.format(np.sum(ptrain-ytrainf)/np.sum(ytrainf)))
+            print('Test:')
+            print('r2 = {:.2f}'.format(r2_score(ytestf,ptest)))
+            print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytestf,ptest))/np.std(ytestf)))
+            print('nmb = {:.2f}'.format(np.sum(ptest-ytestf)/np.sum(ytestf)))
+        self._bst = bst
+        self._xcolumns = X.columns
+        self._log = log
+        return 0
+
+
+    def predict(self,add_obs=True,**kwargs):
+        '''Make prediction for given time window and return predicted values along with observations'''
+        if add_obs:
+            dat = self._merge(**kwargs)
+        else:
+            start = kwargs['start'] if 'start' in kwargs else dat['time'].min()
+            end = kwargs['end'] if 'end' in kwargs else dat['time'].max()
+            dat = self._mod.loc[(self._mod['time']>=start)&(self._mod['time']<=end)].copy()
+            if 'value' not in dat:
+                dat['value'] = [np.nan for i in range(dat.shape[0])]
+        if dat is None:
+            return None
+        pred = self._bst.predict(xgb.DMatrix(dat[self._xcolumns]))
+        if self._log:
+            pred = np.exp(pred)
+        df = dat[['time','value']].copy()
+        df['prediction'] = pred
+        df.rename(columns={'value':'observation'},inplace=True)
+        return df
+
+
+    def plot(self,df,y=['observation','prediction'],ylabel=r'$\text{NO}_{2}\,[\text{ppbv}]$',**kwargs):
+        '''Make plot of prediction vs. observation, as generated by self.predict()'''
+        title = 'Site = {0} ({1:.2f}N, {2:.2f}E)'.format(self._name,self._lat,self._lon)
+        fig = px.line(df,x='time',y=y,labels={'value':ylabel},title=title,**kwargs)
+        fig.update_layout(xaxis_title="Date (UTC)",yaxis_title=ylabel)
+        fig.update_layout(legend=dict(orientation="h",yanchor="bottom",y=1.02,xanchor="right",x=1.),legend_title='')
+        return fig
+
+
+    def _merge(self,start=None,end=None,mod_blacklist=['lat','lon']):
+        '''Merge model and observation and limit to given time window'''
+        if self._mod is None or self._obs is None:
+            if not self._silent:
+                print('Warning: cannot merge because mod or obs is None')
+            return None
+        # toss model variables that are blacklisted. By default, this is lat/lon,
+        # which are rounded to grid cell edges.
+        ivars = [i for i in self._mod.columns if i not in mod_blacklist] 
+        # interpolate model data to openaq time stamps
+        mdat = self._mod[ivars].merge(self._obs,on=['time'],how='outer').sort_values(by='time')
+        idat = mdat.set_index('time').interpolate(method='slinear').reset_index()
+        dat = idat.loc[idat['time'].isin(self._obs['time'])].copy()
+        start = start if start is not None else dat['time'].min()
+        end = end if end is not None else dat['time'].max()
+        testvar = ivars[-1]
+        idat = dat.loc[(dat['time']>=start)&(dat['time']<=end)&(~np.isnan(dat[testvar]))]
+        if idat.shape[0]==0:
+            idat = None
+        return idat
+
+
+    def _init_site(self,location_id,species,silent,model_source):
+        '''Create an empty site object'''
+        self._id      = location_id
+        self._species = species
+        self._silent  = silent
+        self._modsrc  = model_source
+        self._lat     = None
+        self._lon     = None
+        self._name    = None
+        self._obs     = None
+        self._mod     = None
+        self._log     = False
+        return
+
+
+    def _read_model(self,ilon,ilat,start,end,source=None,template=None,collections=None,remove_outlier=0,**kwargs):
+        '''Read model data'''
+        dfs = []
+        source = self._modsrc if source is None else source
+        if source=='opendap':
+            template = OPENDAP_TEMPLATE if template is None else template
+            template = template if isinstance(template,type([])) else [template]
+            for t in template:
+                if not self._silent:
+                    print('Reading {}...'.format(t))
+                ids = xr.open_dataset(t).sel(lon=ilon,lat=ilat,lev=1,method='nearest').sel(time=slice(start,end)).load().to_dataframe().reset_index()
+                dfs.append(ids)
+        if source=='nc4':
+            template = M2_TEMPLATE if template is None else template
+            collections = M2_COLLECTIONS if collections is None else collections
+            for c in collections:
+                itemplate = template.replace("{c}",c)
+                ifiles = start.strftime(itemplate)
+                if not self._silent:
+                    print('Reading {}...'.format(c))
+                ids = xr.open_mfdataset(ifiles).sel(lon=ilon,lat=ilat,method='nearest').sel(time=slice(start,end)).load().to_dataframe().reset_index()
+                dfs.append(ids)
+        if source=='zarr':
+            template = ZARR_TEMPLATE if template is None else template
+            template = template if isinstance(template,type([])) else [template]
+            for t in template:
+                if not self._silent:
+                    print('Reading {}...'.format(t))
+                ids = xr.open_zarr(t).sel(lon=ilon,lat=ilat,lev=1,method='nearest').sel(time=slice(start,end)).load().to_dataframe().reset_index()
+                dfs.append(ids)
+        mod = dfs[0]
+        for d in dfs[1:]:
+            mod = mod.merge(d,on=['time','lat','lon'])
+        mod['time'] = [pd.to_datetime(i) for i in mod['time']]
+        mod['month'] = [i.month for i in mod['time']]
+        mod['hour'] = [i.hour for i in mod['time']]
+        mod['weekday'] = [i.weekday() for i in mod['time']]
+        return mod
+
+
+    def _read_openaq(self,start=dt.datetime(2018,1,1),end=None,normalize=False,**kwargs):
+        '''Read OpenAQ observations and return in ppbv'''
+        end = start+relativedelta(years=1) if end is None else end
+        url = OPENAQ_TEMPLATE.replace('{ID}',str(self._id)).replace('{PARA}',self._species).replace('{Y1}',str(start.year)).replace('{M1}','{:02d}'.format(start.month)).replace('{D1}','{:02d}'.format(start.day)).replace('{Y2}',str(end.year)).replace('{M2}','{:02d}'.format(end.month)).replace('{D2}','{:02d}'.format(end.day))
+        allobs = read_openaq(url,silent=self._silent,**kwargs)
+        if allobs is None:
+            return None
+        obs = allobs.loc[(allobs['parameter']==self._species)&(~np.isnan(allobs['value']))&(allobs['value']>=0.0)].copy()
+        # convert everything to ppbv
+        if self._species != 'pm25':
+            assert(self._species in PPB2UGM3)
+            conv_factor = PPB2UGM3[self._species]
+            obs.loc[obs['unit']=='ppm','value'] = obs.loc[obs['unit']=='ppm','value']*1000.0
+            obs.loc[obs['unit']=='µg/m³','value'] = obs.loc[obs['unit']=='µg/m³','value']*1./conv_factor
+        # subset to relevant columns
+        outobs = obs[['time','location','value']].copy()
+        if normalize:
+            outobs['value'] = (outobs['value']-outobs['value'].mean())/outobs['value'].std()
+        if 'coordinates.latitude' in obs.columns and 'coordinates.longitude' in obs.columns:
+            outobs['lat'] = obs['coordinates.latitude']
+            outobs['lon'] = obs['coordinates.longitude']
+        else:
+            if not self._silent:
+                print('Warning: no coordinates in dataset')
+        return outobs
+
+  
+def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0,**kwargs):
     '''Helper routine to read OpenAQ via API (from given url) and create a dataframe of the data'''
     if not silent:
         print('Quering {}'.format(url))
