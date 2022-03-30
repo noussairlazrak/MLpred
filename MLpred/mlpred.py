@@ -16,7 +16,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from math import sqrt
 from tqdm import tqdm as tqdm
 
-ZARR_TEMPLATE = "geos-cf/zarr/geos-cf.met_tavg_1hr_g1440x721_x1.zarr"
+ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf.met_tavg_1hr_g1440x721_x1.zarr","geos-cf/zarr/geos-cf.chm_tavg_1hr_g1440x721_v1.zarr"]
 OPENDAP_TEMPLATE = "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/fcast/met_tavg_1hr_g1440x721_x1.latest"
 M2_TEMPLATE = "/home/ftei-dsw/Projects/SurfNO2/data/M2/{c}/small/*.{c}.%Y%m*.nc4"
 M2_COLLECTIONS = ["tavg1_2d_flx_Nx","tavg1_2d_lfo_Nx","tavg1_2d_slv_Nx"]
@@ -285,14 +285,13 @@ class ObsSite:
         return fig
 
 
-    def _merge(self,start=None,end=None,mod_blacklist=['lat','lon']):
+    def _merge(self,start=None,end=None,mod_blacklist=['lat','lon','lev']):
         '''Merge model and observation and limit to given time window'''
         if self._mod is None or self._obs is None:
             if not self._silent:
                 print('Warning: cannot merge because mod or obs is None')
             return None
-        # toss model variables that are blacklisted. By default, this is lat/lon,
-        # which are rounded to grid cell edges.
+        # toss model variables that are blacklisted.
         ivars = [i for i in self._mod.columns if i not in mod_blacklist] 
         # interpolate model data to openaq time stamps
         mdat = self._mod[ivars].merge(self._obs,on=['time'],how='outer').sort_values(by='time')
@@ -354,7 +353,10 @@ class ObsSite:
                 dfs.append(ids)
         mod = dfs[0]
         for d in dfs[1:]:
-            mod = mod.merge(d,on=['time','lat','lon'])
+            merge_on = ['time','lat','lon']
+            if 'lev' in d and 'lev' in mod:
+                merge_on.append('lev')
+            mod = mod.merge(d,on=merge_on)
         mod['time'] = [pd.to_datetime(i) for i in mod['time']]
         mod['month'] = [i.month for i in mod['time']]
         mod['hour'] = [i.hour for i in mod['time']]
