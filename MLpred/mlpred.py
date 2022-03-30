@@ -22,7 +22,11 @@ M2_TEMPLATE = "/home/ftei-dsw/Projects/SurfNO2/data/M2/{c}/small/*.{c}.%Y%m*.nc4
 M2_COLLECTIONS = ["tavg1_2d_flx_Nx","tavg1_2d_lfo_Nx","tavg1_2d_slv_Nx"]
 OPENAQ_TEMPLATE = 'https://docs.openaq.org/v2/measurements?date_from={Y1}-{M1}-01T00%3A00%3A00%2B00%3A00&date_to={Y2}-{M2}-01T00%3A00%3A00%2B00%3A00&limit=10000&page=1&offset=0&sort=asc&radius=1000&location_id={ID}&parameter={PARA}&order_by=datetime'
 
+# list with gas names. Used to identify fields that need to be converted from v/v to ppbv
+DEFAULT_GASES = ['co', 'hcho', 'no2', 'noy', 'o3']
+
 PPB2UGM3 = {'no2':1.88,'o3':1.97}
+VVtoPPBV = 1.0e9
 
 class ObsSiteList:
     def __init__(self,ifile=None):
@@ -321,7 +325,7 @@ class ObsSite:
         return
 
 
-    def _read_model(self,ilon,ilat,start,end,source=None,template=None,collections=None,remove_outlier=0,**kwargs):
+    def _read_model(self,ilon,ilat,start,end,source=None,template=None,collections=None,remove_outlier=0,gases=DEFAULT_GASES,**kwargs):
         '''Read model data'''
         dfs = []
         source = self._modsrc if source is None else source
@@ -361,6 +365,11 @@ class ObsSite:
         mod['month'] = [i.month for i in mod['time']]
         mod['hour'] = [i.hour for i in mod['time']]
         mod['weekday'] = [i.weekday() for i in mod['time']]
+        # convert trace gases from v/v to ppbv
+        for g in gases:
+            if g in mod:
+                print('Convert from v/v to ppbv: {}'.format(g))
+                mod[g] = mod[g] * VVtoPPBV
         return mod
 
 
