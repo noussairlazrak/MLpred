@@ -329,7 +329,7 @@ class ObsSite:
         return
 
 
-    def _read_model(self,ilon,ilat,start,end,source=None,template=None,collections=None,remove_outlier=0,gases=DEFAULT_GASES,**kwargs):
+    def _read_model(self,ilon,ilat,start,end,resample=None,source=None,template=None,collections=None,remove_outlier=0,gases=DEFAULT_GASES,**kwargs):
         '''Read model data'''
         dfs = []
         source = self._modsrc if source is None else source
@@ -366,6 +366,8 @@ class ObsSite:
                 merge_on.append('lev')
             mod = mod.merge(d,on=merge_on)
         mod['time'] = [pd.to_datetime(i) for i in mod['time']]
+        if resample is not None:
+            mod = mod.set_index('time').resample(resample).mean().reset_index()
         mod['month'] = [i.month for i in mod['time']]
         mod['hour'] = [i.hour for i in mod['time']]
         mod['weekday'] = [i.weekday() for i in mod['time']]
