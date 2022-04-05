@@ -177,20 +177,23 @@ class ObsSite:
         return
 
 
-    def read_obs(self,**kwargs):
+    def read_obs(self,data=None,**kwargs):
         '''Wrapper routine to read observations'''
-        obs = self._read_openaq(**kwargs)
-        if obs is None:
+        if data is None:
+            data = self._read_openaq(**kwargs)
+        if data is None:
             if not self._silent:
                 print('Warning: no observations found!')
             return
-        if 'lat' not in obs.columns:
+        if 'lat' not in data.columns:
+            if not self._silent:
+                print('Warning: no latitude entry found in observation data - cannot process information')
             return
-        ilat = np.round(obs['lat'].median(),2)
-        ilon = np.round(obs['lon'].median(),2)
-        iname = obs['location'].values[0]
+        ilat = np.round(data['lat'].median(),2)
+        ilon = np.round(data['lon'].median(),2)
+        iname = data['location'].values[0]
         if not self._silent:
-            print('Found {:d} observations for {:} (lon={:.2f}; lat={:.2f})'.format(obs.shape[0],iname,ilon,ilat))
+            print('Found {:d} observations for {:} (lon={:.2f}; lat={:.2f})'.format(data.shape[0],iname,ilon,ilat))
         self._lat = ilat if self._lat is None else self._lat 
         self._lon = ilon if self._lon is None else self._lon 
         assert(ilat==self._lat)
@@ -199,7 +202,7 @@ class ObsSite:
         if iname != self._name and not self._silent:
             print('Warning: new station name is {}, vs. previously {}'.format(iname,self._name))
             self._name = iname
-        self._obs = self._obs.merge(obs,how='outer') if self._obs is not None else obs
+        self._obs = self._obs.merge(data,how='outer') if self._obs is not None else data
         return
 
 
