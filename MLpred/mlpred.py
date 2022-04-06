@@ -26,7 +26,7 @@ M2_COLLECTIONS = ["tavg1_2d_flx_Nx","tavg1_2d_lfo_Nx","tavg1_2d_slv_Nx"]
 OPENAQ_TEMPLATE = 'https://docs.openaq.org/v2/measurements?date_from={Y1}-{M1}-01T00%3A00%3A00%2B00%3A00&date_to={Y2}-{M2}-01T00%3A00%3A00%2B00%3A00&limit=10000&page=1&offset=0&sort=asc&radius=1000&location_id={ID}&parameter={PARA}&order_by=datetime'
 
 # list with gas names. Used to identify fields that need to be converted from v/v to ppbv
-DEFAULT_GASES = ['co', 'hcho', 'no2', 'noy', 'o3']
+DEFAULT_GASES = ['co', 'hcho', 'no','no2', 'noy', 'o3']
 
 PPB2UGM3 = {'no2':1.88,'o3':1.97}
 VVtoPPBV = 1.0e9
@@ -179,7 +179,7 @@ class ObsSite:
         return
 
 
-    def read_obs(self,data=None,**kwargs):
+    def read_obs(self,data=None,resample=None,**kwargs):
         '''Wrapper routine to read observations'''
         if data is None:
             data = self._read_openaq(**kwargs)
@@ -191,6 +191,9 @@ class ObsSite:
             if not self._silent:
                 print('Warning: no latitude entry found in observation data - cannot process information')
             return
+        if resample is not None:
+            data = data.set_index('time').resample(resample).mean().reset_index()
+            print('Resampled observation data to: {}'.format(resample))
         ilat = np.round(data['lat'].median(),2)
         ilon = np.round(data['lon'].median(),2)
         iname = data['location'].values[0]
@@ -220,7 +223,7 @@ class ObsSite:
         return
 
 
-    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.2,log=False,xgbparams={'booster':'gbtree'},**kwargs):
+    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.2,log=False,inc=False,xgbparams={'booster':'gbtree'},**kwargs):
         '''Train XGBoost model using data in memory'''
         dat = self._merge(**kwargs)
         if dat is None:
@@ -234,6 +237,13 @@ class ObsSite:
         xvar = [i for i in dat.columns if i not in blacklist]
         X = dat[xvar]
         y = dat[yvar]
+        fvar = None
+        if inc:
+            fvar = 'pm25_rh35_gcc' if self._species=='pm25' else self._species
+            if fvar not in X:
+                print('Warning: target species is not an input feature - cannot do increment ML (set inc=False to predict concentration instead)')
+                return -1
+            y = y.values.flatten() - X[fvar].values.flatten()
         if log:
             y = np.log(y)
         Xtrain, Xtest, ytrain, ytest = train_test_split( X, y, test_size=test_size)
@@ -250,6 +260,11 @@ class ObsSite:
             ytestf  = np.exp(ytestf)
             ptrain  = np.exp(ptrain)
             ptest   = np.exp(ptest)
+        if inc:
+            ytrainf = ytrainf + np.array(Xtrain[fvar]).flatten()
+            ytestf  = ytestf  + np.array(Xtest[fvar]).flatten()
+            ptrain  = ptrain  + np.array(Xtrain[fvar]).flatten()
+            ptest   = ptest   + np.array(Xtest[fvar]).flatten()
         if not self._silent:
             print('Training:')
             print('r2 = {:.2f}'.format(r2_score(ytrainf,ptrain)))
@@ -261,7 +276,9 @@ class ObsSite:
             print('nmb = {:.2f}'.format(np.sum(ptest-ytestf)/np.sum(ytestf)))
         self._bst = bst
         self._xcolumns = X.columns
-        self._log = log
+        self._log  = log
+        self._inc  = inc
+        self._fvar = fvar
         return 0
 
 
@@ -280,6 +297,8 @@ class ObsSite:
         pred = self._bst.predict(xgb.DMatrix(dat[self._xcolumns]))
         if self._log:
             pred = np.exp(pred)
+        if self._inc:
+            pred = pred + dat[self._fvar]
         df = dat[['time','value']].copy()
         df['prediction'] = pred
         df.rename(columns={'value':'observation'},inplace=True)
@@ -328,6 +347,8 @@ class ObsSite:
         self._obs     = None
         self._mod     = None
         self._log     = False
+        self._inc     = False
+        self._fvar    = None      # name of input feature corresponding to output variable. Only needed if _inc is True
         return
 
 
@@ -372,6 +393,7 @@ class ObsSite:
         mod['time'] = [pd.to_datetime(i) for i in mod['time']]
         if resample is not None:
             mod = mod.set_index('time').resample(resample).mean().reset_index()
+            print('Resampled model data to: {}'.format(resample))
         mod['month'] = [i.month for i in mod['time']]
         mod['hour'] = [i.hour for i in mod['time']]
         mod['weekday'] = [i.weekday() for i in mod['time']]
