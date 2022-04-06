@@ -1,6 +1,7 @@
 #!/bin/python
 import sys
 import os
+import fsspec
 import numpy as np
 import pandas as pd
 import datetime as dt
@@ -18,6 +19,7 @@ from tqdm import tqdm as tqdm
 
 #ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf.met_tavg_1hr_g1440x721_x1.zarr","geos-cf/zarr/geos-cf.chm_tavg_1hr_g1440x721_v1.zarr"]
 ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf-rpl.zarr"]
+S3_TEMPLATE = "s3://eis-dh-fire/geos-cf-rpl.zarr"
 OPENDAP_TEMPLATE = "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/fcast/met_tavg_1hr_g1440x721_x1.latest"
 M2_TEMPLATE = "/home/ftei-dsw/Projects/SurfNO2/data/M2/{c}/small/*.{c}.%Y%m*.nc4"
 M2_COLLECTIONS = ["tavg1_2d_flx_Nx","tavg1_2d_lfo_Nx","tavg1_2d_slv_Nx"]
@@ -351,13 +353,15 @@ class ObsSite:
                     print('Reading {}...'.format(c))
                 ids = xr.open_mfdataset(ifiles).sel(lon=ilon,lat=ilat,method='nearest').sel(time=slice(start,end)).load().to_dataframe().reset_index()
                 dfs.append(ids)
-        if source=='zarr':
-            template = ZARR_TEMPLATE if template is None else template
+        if source=='zarr' or source=='s3':
+            if template is None:
+                template = ZARR_TEMPLATE if source=='zarr' else S3_TEMPLATE
             template = template if isinstance(template,type([])) else [template]
             for t in template:
                 if not self._silent:
                     print('Reading {}...'.format(t))
-                ids = xr.open_zarr(t).sel(lon=ilon,lat=ilat,lev=1,method='nearest').sel(time=slice(start,end)).load().to_dataframe().reset_index()
+                ipath = fsspec.get_mapper(t) if source=='s3' else t
+                ids = xr.open_zarr(ipath).sel(lon=ilon,lat=ilat,lev=1,method='nearest').sel(time=slice(start,end)).load().to_dataframe().reset_index()
                 dfs.append(ids)
         mod = dfs[0]
         for d in dfs[1:]:
