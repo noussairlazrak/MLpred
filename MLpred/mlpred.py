@@ -1,4 +1,12 @@
-#!/bin/python
+
+# -*- coding: utf-8 -*-
+# ! /usr/bin/env python
+""" 
+This file handles localized forecasts, baed on GMAO's GEOS CF and OpenAQ data
+.. codeauthor:: Christoph R Keller <christoph.a.keller@nasa.gov>
+"""
+
+# Import python native libs
 import sys
 import os
 import fsspec
@@ -13,9 +21,19 @@ import requests
 import pickle
 from dateutil.relativedelta import relativedelta 
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, mean_absolute_error, median_absolute_error
 from math import sqrt
 from tqdm import tqdm as tqdm
+from sklearn.metrics import mean_squared_error as MSE_1
+import shap
+from sklearn.base import BaseEstimator
+from sklearn.ensemble import GradientBoostingRegressor
+from ipywidgets import interact, widgets
+from plotly.offline import iplot, plot, init_notebook_mode
+init_notebook_mode(connected=True)
+import cufflinks as cf
+cf.go_offline(connected=True)
+
 
 #ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf.met_tavg_1hr_g1440x721_x1.zarr","geos-cf/zarr/geos-cf.chm_tavg_1hr_g1440x721_v1.zarr"]
 ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf-rpl.zarr"]
@@ -23,7 +41,7 @@ S3_TEMPLATE = "s3://eis-dh-fire/geos-cf-rpl.zarr"
 OPENDAP_TEMPLATE = "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/fcast/met_tavg_1hr_g1440x721_x1.latest"
 M2_TEMPLATE = "/home/ftei-dsw/Projects/SurfNO2/data/M2/{c}/small/*.{c}.%Y%m*.nc4"
 M2_COLLECTIONS = ["tavg1_2d_flx_Nx","tavg1_2d_lfo_Nx","tavg1_2d_slv_Nx"]
-OPENAQ_TEMPLATE = 'https://docs.openaq.org/v2/measurements?date_from={Y1}-{M1}-01T00%3A00%3A00%2B00%3A00&date_to={Y2}-{M2}-01T00%3A00%3A00%2B00%3A00&limit=10000&page=1&offset=0&sort=asc&radius=1000&location_id={ID}&parameter={PARA}&order_by=datetime'
+OPENAQ_TEMPLATE = 'https://api.openaq.org/v2//measurements?date_from={Y1}-{M1}-01T00%3A00%3A00%2B00%3A00&date_to={Y2}-{M2}-01T00%3A00%3A00%2B00%3A00&limit=10000&page=1&offset=0&sort=asc&radius=1000&location_id={ID}&parameter={PARA}&order_by=datetime'
 
 # list with gas names. Used to identify fields that need to be converted from v/v to ppbv
 DEFAULT_GASES = ['co', 'hcho', 'no','no2', 'noy', 'o3']
@@ -42,7 +60,14 @@ class ObsSiteList:
 
 
     def save(self,ofile='site_list.pkl'):
-        '''Write out a site_list, discarding all model and observation data beforehand (but keeping the trained XGBoost instances)'''
+        '''Write out a site_list, discarding all model and observation data beforehand (but keeping the trained XGBoost instances)
+         `Generators` class: Contains medigan's public methods to facilitate users' automated sample generation workflows.
+        Parameters
+        ----------
+        ofile: ofile
+            Saves the list of sites to a pickle file
+        
+       '''
         for isite in self._site_list:
             isite._obs = None
             isite._mod = None
@@ -59,7 +84,25 @@ class ObsSiteList:
 
 
     def filter_sites(self,year=2018,minobs=72,minvalue=15.0,silent=True):
-        '''Wrapper routine to get dataframe with average values for all sites with at least nobs observations for the first day of each month of the given year'''
+
+        """ Wrapper routine to get dataframe with average values for all sites with at least nobs observations for the first day of each month of the given year
+        
+        Parameters
+        ----------
+        year: year
+            The year filter
+        minobs: int
+            The minimal observations to filter
+        minvalue: float
+            The minimal observation value
+        silent: bool
+            Mute printed messages from the function
+        
+        Returns
+        -------
+        site_ids : pd.DataFrame
+            A formatted observation data frame based on the filters
+        """
         allmonths = []
         for imonth in tqdm(range(12)):
             testurl = 'https://docs.openaq.org/v2/measurements?date_from={0:d}-{1:02d}-01T00%3A00%3A00%2B00%3A00&date_to={0:d}-{1:02d}-02T00%3A00%3A00%2B00%3A00&limit=100000&page=1&offset=0&sort=asc&parameter=no2&order_by=datetime'.format(year,imonth+1)
@@ -78,7 +121,28 @@ class ObsSiteList:
     
     
     def create_list(self,site_ids,minobs=240,silent=True,model_source='nc4',log=False,xgbparams={"booster":"gbtree","eta":0.5},**kwargs):
-        '''Create a list of observation sites by training all sites listed in site_ids that have at least minobs number of observations in the training window'''
+        """ Create a list of observation sites by training all sites listed in site_ids that have at least minobs number of observations in the training window
+        
+        Parameters
+        ----------
+        site_ids: list
+            list of OpenAQ site ids
+        minobs: int
+            The minimal observations to filter
+        model_source: str
+            Model sources
+        silent: bool
+            Mute printed messages from the function
+        log: bool
+            numpy.log for the training loop
+        xgbparams: dict
+            
+        
+        Returns
+        -------
+        site_ids : pd.DataFrame
+            A formatted observation data frame based on the filters
+        """
         self._site_list = []
         for i in tqdm(site_ids):
             isite = ObsSite(location_id=i,silent=silent,model_source=model_source)
@@ -223,9 +287,10 @@ class ObsSite:
         return
 
 
-    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.2,log=False,inc=False,xgbparams={'booster':'gbtree'},**kwargs):
+    def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.3,log=False,inc=False,xgbparams={'booster':'gbtree'},model_type = "xgboost-tuned",**kwargs):
         '''Train XGBoost model using data in memory'''
         dat = self._merge(**kwargs)
+
         if dat is None:
             return -2
         if mindat is not None:
@@ -247,42 +312,78 @@ class ObsSite:
         if log:
             y = np.log(y)
         Xtrain, Xtest, ytrain, ytest = train_test_split( X, y, test_size=test_size)
-        train = xgb.DMatrix(Xtrain,ytrain)
-        if not self._silent:
-            print('training model ...')
-        bst = xgb.train(xgbparams,train)
-        ptrain = bst.predict(xgb.DMatrix(Xtrain))
-        ptest = bst.predict(xgb.DMatrix(Xtest))
-        ytrainf = np.array(ytrain).flatten()
-        ytestf = np.array(ytest).flatten()
-        if log:
-            ytrainf = np.exp(ytrainf)
-            ytestf  = np.exp(ytestf)
-            ptrain  = np.exp(ptrain)
-            ptest   = np.exp(ptest)
-        if inc:
-            ytrainf = ytrainf + np.array(Xtrain[fvar]).flatten()
-            ytestf  = ytestf  + np.array(Xtest[fvar]).flatten()
-            ptrain  = ptrain  + np.array(Xtrain[fvar]).flatten()
-            ptest   = ptest   + np.array(Xtest[fvar]).flatten()
-        if not self._silent:
-            print('Training:')
-            print('r2 = {:.2f}'.format(r2_score(ytrainf,ptrain)))
-            print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytrainf,ptrain))/np.std(ytrainf)))
-            print('nmb = {:.2f}'.format(np.sum(ptrain-ytrainf)/np.sum(ytrainf)))
-            print('Test:')
-            print('r2 = {:.2f}'.format(r2_score(ytestf,ptest)))
-            print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytestf,ptest))/np.std(ytestf)))
-            print('nmb = {:.2f}'.format(np.sum(ptest-ytestf)/np.sum(ytestf)))
+        
+        if model_type == "Matrix":
+            train = xgb.DMatrix(Xtrain,ytrain)
+            if not self._silent:
+                print('training model ...')
+            bst = xgb.train(xgbparams,train)
+            ptrain = bst.predict(xgb.DMatrix(Xtrain))
+            ptest = bst.predict(xgb.DMatrix(Xtest))
+            ytrainf = np.array(ytrain).flatten()
+            ytestf = np.array(ytest).flatten()
+            if log:
+                ytrainf = np.exp(ytrainf)
+                ytestf  = np.exp(ytestf)
+                ptrain  = np.exp(ptrain)
+                ptest   = np.exp(ptest)
+            if inc:
+                ytrainf = ytrainf + np.array(Xtrain[fvar]).flatten()
+                ytestf  = ytestf  + np.array(Xtest[fvar]).flatten()
+                ptrain  = ptrain  + np.array(Xtrain[fvar]).flatten()
+                ptest   = ptest   + np.array(Xtest[fvar]).flatten()
+            if not self._silent:
+                print('Training:')
+                print('r2 = {:.2f}'.format(r2_score(ytrainf,ptrain)))
+                print('rmse = {:.2f}'.format( mean_squared_error(ytrainf,ptrain)))
+                print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytrainf,ptrain))/np.std(ytrainf)))
+                print('nmb = {:.2f}'.format(np.sum(ptrain-ytrainf)/np.sum(ytrainf)))
+                print('Test:')
+                print('r2 = {:.2f}'.format(r2_score(ytestf,ptest)))
+                print('nrmse = {:.2f}'.format( sqrt(mean_squared_error(ytestf,ptest))/np.std(ytestf)))
+                print('nmb = {:.2f}'.format(np.sum(ptest-ytestf)/np.sum(ytestf)))
+                
+        if model_type == "xgboost-tuned":
+            bst = xgb.XGBRegressor(colsample_bytree = 0.3, learning_rate = 0.01, max_depth = 10, n_estimators = 1000)
+            prepared_model=bst.fit(Xtrain, ytrain)
+            ypred = bst.predict(dat[X.columns])
+            score=prepared_model.score(Xtest,ytest)
+            target=prepared_model.predict(Xtest) 
+            
+            if not self._silent:
+                MSE=mean_squared_error(ytest,target) 
+                RMSE=mean_squared_error(ytest,target, squared=False) 
+                MAE = mean_absolute_error(ytest, target)
+                r2=r2_score(ytest,target) 
+
+                # RMSE Computation
+                rmse_1 = np.sqrt(MSE_1(ytest, target))
+                print("RMSE : % f" %(rmse_1))
+                print('Score: ',score)
+                print('mean square error', MSE)
+                print('Root mean square error', RMSE)
+                print('MAE', MAE)
+                print('R2', r2)
+
+                print("Train Accuracy:",prepared_model.score(Xtrain, ytrain))
+                print("Test Accuracy:",prepared_model.score(Xtest, ytest))
+            
+            
+            
         self._bst = bst
+        self._x = X
         self._xcolumns = X.columns
         self._log  = log
         self._inc  = inc
         self._fvar = fvar
+        self.Xtrain = Xtrain
+        self.Xtest = Xtest
+        self.ytrain = ytrain
+        self.ytest = ytest
         return 0
 
 
-    def predict(self,add_obs=True,**kwargs):
+    def predict(self,add_obs=True, model_type = "xgboost-tuned", **kwargs):
         '''Make prediction for given time window and return predicted values along with observations'''
         if add_obs:
             dat = self._merge(**kwargs)
@@ -294,24 +395,51 @@ class ObsSite:
                 dat['value'] = [np.nan for i in range(dat.shape[0])]
         if dat is None:
             return None
-        pred = self._bst.predict(xgb.DMatrix(dat[self._xcolumns]))
+        if model_type == "xgboost-tuned":
+            pred = self._bst.predict(dat[self._xcolumns])
+        if model_type == "Matrix":   
+            pred = self._bst.predict(xgb.DMatrix(dat[self._xcolumns]))
+        
         if self._log:
             pred = np.exp(pred)
         if self._inc:
             pred = pred + dat[self._fvar]
+        
         df = dat[['time','value']].copy()
         df['prediction'] = pred
         df.rename(columns={'value':'observation'},inplace=True)
         return df
 
 
-    def plot(self,df,y=['observation','prediction'],ylabel=r'$\text{NO}_{2}\,[\text{ppbv}]$',**kwargs):
+    def plot(self,df,y=['observation','prediction'],ylabel=r'$\text{NO}_{2}\,[\text{ppbv}]$', **kwargs):
         '''Make plot of prediction vs. observation, as generated by self.predict()'''
         title = 'Site = {0} ({1:.2f}N, {2:.2f}E)'.format(self._name,self._lat,self._lon)
         fig = px.line(df,x='time',y=y,labels={'value':ylabel},title=title,**kwargs)
         fig.update_layout(xaxis_title="Date (UTC)",yaxis_title=ylabel)
         fig.update_layout(legend=dict(orientation="h",yanchor="bottom",y=1.02,xanchor="right",x=1.),legend_title='')
+        
         return fig
+    
+    def explain(self,plot=False,feature=False):
+        ''' Plot SHAP values to explain how the features are driving the predictions'''
+        if (self._bst):
+            explainer = shap.Explainer(self._bst)
+            shap_values = explainer(self._x)
+            if plot == "waterfall":
+                shap.plots.waterfall(shap_values[0])
+            if plot == "beeswarm":
+                shap.plots.beeswarm(shap_values)
+            if plot == "scatter":
+                if feature:
+                    try:
+                        shap.plots.scatter(shap_values[:,feature], color=shap_values) 
+                    except:
+                        print("feature not found!")
+        
+        else:
+            print("Please train the model first")
+        return
+    
 
 
     def _merge(self,start=None,end=None,mod_blacklist=['lat','lon','lev']):
@@ -430,35 +558,330 @@ class ObsSite:
             if not self._silent:
                 print('Warning: no coordinates in dataset')
         return outobs
+    
 
-  
+    def explain_model(model,X,plot,feature = False):
+        try:
+            explainer = shap.Explainer(model)
+            shap_values = explainer(X)
+            if plot == "waterfall":
+                shap.waterfall_plot(shap_values[0])
+            if plot == "beeswarm":
+                shap.beeswarm_plot(shap_values)
+            if plot == "scatter":
+                if feature:
+                    shap.plots.scatter(shap_values[:,feature], color=shap_values)
+
+        except:
+             print('Warning: Model Error')
+
+
+    def save_model(model,model_data=False,save_data=False,name=False):
+        if name is False:
+            name = "pretrained_model"
+        pickle.dump(model, open(name+'.sav', 'wb'))
+        print("Model saved")
+        if save_data:
+            model_data.to_csv('model_data.csv')
+            print("Model data saved")
+        return
+
+    def load_model(name=False,**kwargs):
+        loaded_model = pickle.load(open(name, 'rb'))
+        return loaded_model 
+
+    def rmse(predictions, targets):
+        return np.sqrt(((predictions - targets) ** 2).mean())
+
+    def gridSerch(model,X_train,Y_train):
+        print('Tunning the model hyper parameter for this location')
+        params = { 'max_depth': [3, 5, 6, 10, 15, 20],
+               'learning_rate': [0.01, 0.1, 0.2, 0.3],
+               'subsample': np.arange(0.5, 1.0, 0.1),
+               'colsample_bytree': np.arange(0.4, 1.0, 0.1),
+               'colsample_bylevel': np.arange(0.4, 1.0, 0.1),
+               'n_estimators': [100, 500, 1000]}
+        clf = RandomizedSearchCV(estimator=model,
+                                 param_distributions=params,
+                                 scoring='neg_mean_squared_error',
+                                 n_iter=25,
+                                 verbose=1)
+        clf.fit(X_train, Y_train)
+        print("Best parameters:", clf.best_params_)
+        print("Lowest RMSE: ", (-clf.best_score_)**(1/2.0))
+        return clf
+
+    def plot_intervals(self, predictions, mid=False, start=None, stop=None, title=None, **kwargs):
+        predictions = (
+            predictions.loc[start:stop].copy()
+            if start is not None or stop is not None
+            else predictions.copy()
+        )
+        data = []
+
+        '''Lower Trace'''
+
+        trace_low = go.Scatter(
+            x=predictions.index,
+            y=predictions["lower"],
+            fill="tonexty",
+            line=dict(color="darkblue"),
+            fillcolor="rgba(173, 216, 230, 0.4)",
+            showlegend=True,
+            name="lower",
+        )
+        '''Upper Trace'''
+        trace_high = go.Scatter(
+            x=predictions.index,
+            y=predictions["upper"],
+            fill=None,
+            line=dict(color="orange"),
+            showlegend=True,
+            name="upper",
+        )
+
+
+        data.append(trace_high)
+        data.append(trace_low)
+
+        if mid:
+            trace_mid = go.Scatter(
+            x=predictions.index,
+            y=predictions["mid"],
+            fill=None,
+            line=dict(color="green"),
+            showlegend=True,
+            name="mid",
+        )
+            data.append(trace_mid)
+
+        '''Actual Values Trace'''
+        trace_actual = go.Scatter(
+            x=predictions.index,
+            y=predictions["mid"],
+            fill=None,
+            line=dict(color="black"),
+            showlegend=True,
+            name="middle",
+        )
+        data.append(trace_actual)
+        
+        
+        '''Observation Values Trace'''
+        trace_actual = go.Scatter(
+            x=predictions.index,
+            y=predictions["value"],
+            fill=None,
+            line=dict(color="red"),
+            showlegend=True,
+            name="observation",
+        )
+        data.append(trace_actual)
+        
+        '''prediction Values Trace'''
+        bias_corrected = go.Scatter(
+            x=predictions.index,
+            y=predictions["bias_corrected"],
+            fill=None,
+            line=dict(color="blue"),
+            showlegend=True,
+            name="prediction",
+        )
+        data.append(bias_corrected)
+        
+
+        '''Title and customization'''
+        layout = go.Layout(
+            height=900,
+            width=1400,
+            title=dict(text="Prediction Intervals" if title is None else title),
+            yaxis=dict(title=dict(text="NO2 ppvb")),
+            xaxis=dict(
+                rangeselector=dict(
+                    buttons=list(
+                        [
+                            dict(count=1, label="1d", step="day", stepmode="backward"),
+                            dict(count=7, label="1w", step="day", stepmode="backward"),
+                            dict(count=1, label="1m", step="month", stepmode="backward"),
+                            dict(count=1, label="YTD", step="year", stepmode="todate"),
+                            dict(count=1, label="1y", step="year", stepmode="backward"),
+                            dict(step="all"),
+                        ]
+                    )
+                ),
+                rangeslider=dict(visible=True),
+                type="date",
+            ),
+        )
+
+        fig = go.Figure(data=data, layout=layout)
+
+        fig["layout"]["font"] = dict(size=20)
+        fig.layout.template = "plotly_white"
+        return fig
+
+    def ConfidenceIntervals(self, LOWER_ALPHA = 0.15, UPPER_ALPHA = 0.85, N_ESTIMATORS = 1000, MAX_DEPTH = 5, LEARNING_RATE = 0.01, colsample_bytree = 0.3, OUTPUT = "plot", **kwargs):
+
+            
+        lower_model = GradientBoostingRegressor(loss="quantile", alpha=LOWER_ALPHA, n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, learning_rate = LEARNING_RATE)
+
+        mid_model = xgb.XGBRegressor(loss="ls", n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, colsample_bytree = colsample_bytree, learning_rate = LEARNING_RATE)
+
+        upper_model = GradientBoostingRegressor(loss="quantile", alpha=UPPER_ALPHA, n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, learning_rate = LEARNING_RATE)
+        
+    
+
+        lower_model.fit(self.Xtrain, self.ytrain)
+        mid_model.fit(self.Xtrain, self.ytrain)
+        upper_model.fit(self.Xtrain, self.ytrain)
+
+   
+        predictions = pd.DataFrame(self.ytest)
+        
+       
+        predictions['lower'] = lower_model.predict(self.Xtest)
+        predictions['mid'] = mid_model.predict(self.Xtest)
+        predictions['upper'] = upper_model.predict(self.Xtest)
+        predictions['bias_corrected'] = self._bst.predict(self.Xtest)
+        
+        dat = self._merge()
+        df = dat[['time','value']].copy()
+        to_plot = df.merge(predictions)
+        to_plot['timestamp'] = pd.to_datetime(to_plot['time'], unit='s')
+        to_plot = to_plot.set_index(pd.DatetimeIndex(to_plot['timestamp']))
+        to_plot.dropna()
+        to_plot.sort_index(inplace=True)
+
+
+
+        if OUTPUT == "PLOT":
+            fig = self.plot_intervals(to_plot, start="2021-01-19", stop="2022-02-28")
+            return fig
+        if OUTPUT == "dataframe":
+            return to_plot
+        
+
+## General Functions
+
 def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0,**kwargs):
-    '''Helper routine to read OpenAQ via API (from given url) and create a dataframe of the data'''
-    if not silent:
-        print('Quering {}'.format(url))
-    r = requests.get( url )
-    assert(r.status_code==200)
-    allobs = pd.json_normalize(r.json()['results'])
-    if allobs.shape[0]==0:
+        '''Helper routine to read OpenAQ via API (from given url) and create a dataframe of the data'''
         if not silent:
-            print('Warning: no OpenAQ data found for specified url')
-        return None
-    allobs = allobs.loc[(allobs['value']>=0.0)&(~np.isnan(allobs['value']))].copy()
-    if reference_grade_only:
-        allobs = allobs.loc[allobs['sensorType']=='reference grade'].copy()
-    allobs['time'] = [dt.datetime.strptime(i,'%Y-%m-%dT%H:%M:%S+00:00') for i in allobs['date.utc']]
-    if remove_outlier > 0:
-        std = allobs['value'].std()
-        mn  = allobs['value'].mean()
-        minobs = mn - remove_outlier*std
-        maxobs = mn + remove_outlier*std
-        norig = allobs.shape[0]
-        allobs = allobs.loc[(allobs['value']>=minobs)&(allobs['value']<=maxobs)].copy()
-        if not silent:
-            nremoved = norig - allobs.shape[0]
-            print('removed {:.0f} of {:.0f} values because considered outliers ({:.2f}%)'.format(nremoved,norig,np.float(nremoved)/np.float(norig)*100.0))
-    return allobs
+            print('Quering  {}'.format(url))
+        r = requests.get( url )
+        if (r.status_code !=200):
+            print('Error:  {}'.format(r))
+            return None
+        allobs = pd.json_normalize(r.json()['results'])
+        if allobs.shape[0]==0:
+            if not silent:
+                print('Warning: no OpenAQ data found for specified url')
+            return None
 
+        try:
+            allobs = allobs.loc[(allobs['value']>=0.0)&(~np.isnan(allobs['value']))].copy()
+            if reference_grade_only:
+                allobs = allobs.loc[allobs['sensorType']=='reference grade'].copy()
+            allobs['time'] = [dt.datetime.strptime(i,'%Y-%m-%dT%H:%M:%S+00:00') for i in allobs['date.utc']]
+            if remove_outlier > 0:
+                std = allobs['value'].std()
+                mn  = allobs['value'].mean()
+                minobs = mn - remove_outlier*std
+                maxobs = mn + remove_outlier*std
+                norig = allobs.shape[0]
+                allobs = allobs.loc[(allobs['value']>=minobs)&(allobs['value']<=maxobs)].copy()
+                if not silent:
+                    nremoved = norig - allobs.shape[0]
+                    print('removed {:.0f} of {:.0f} values because considered outliers ({:.2f}%)'.format(nremoved,norig,np.float(nremoved)/np.float(norig)*100.0))
+            return allobs
+
+        except:
+            if not silent:
+                print('Warning ...')
+            return None
+
+
+def get_location_forecasts_plots(site_id, species=False, hpTunning= False, errorPrediction = False, output = False):
+    site_data = mlpred.ObsSite(10812,model_source='s3',species="no2")
+    site_data.read_obs(start=dt.datetime(2021,1,19),end=dt.datetime(2022,2,28))
+    site_data.read_mod()
+
+    target_var='value'
+    skipvar=['time','location','lat','lon',]
+    all_data = site_data._merge()
+    yvar = ['value']
+    blacklist = yvar + skipvar
+    xvar = [i for i in all_data.columns if i not in blacklist]
+    x = all_data[xvar]
+    y = all_data[yvar]
+
+    X_train, X_test, Y_train, Y_test= train_test_split(x, y, test_size=0.3, random_state=7)
+
+    if hpTunning:
+        model = xgb.XGBRegressor()
+        gridSerch(model,X_train,Y_train)
+    else:
+        model = xgb.XGBRegressor(colsample_bytree = 0.3, learning_rate = 0.01, max_depth = 4, n_estimators = 2000)
+
+
+
+    #Train
+
+    prepared_model=model.fit(X_train, Y_train)
+
+    #Prediction DF
+
+    ypred = model.predict(all_data[x.columns])
+
+    #Metrics
+    score=prepared_model.score(X_test,Y_test)
+    Target_predicted=prepared_model.predict(X_test)
+    MSE=round(mean_squared_error(Y_test,Target_predicted), 2)
+    RMSE=round(mean_squared_error(Y_test,Target_predicted, squared=False) , 2)
+    MAE = round(mean_absolute_error(Y_test, Target_predicted) , 2)
+    r2=round(r2_score(Y_test,Target_predicted) , 2)
+
+    training_acuracy = round(model.score(X_train, Y_train), 2)
+    testing_acuracy = round(model.score(X_test, Y_test), 2)
+
+    #Plotting
+
+    df = all_data[['time','value']].copy()
+    df['prediction'] = ypred
+    df['residuals'] = df['prediction'] - df['value']
+
+    model_no2 = site_data._mod[['time','no2']].copy()
+    model_no2['time'] = [dt.datetime(i.year,i.month,i.day,i.hour,0,0) for i in model_no2['time']]
+
+    dfm = df.merge(model_no2)
+    dfm = dfm.set_index('time').resample('1D').mean().reset_index()
+
+    metrics =  ' Validation score: ' + str(testing_acuracy)+' | RMSE: '+ str(RMSE) + '| MAE: '+ str(MAE) +'| r2:' + str(r2)
+
+
+    fig = site_data.plot(dfm,y=['value','prediction'])
+
+
+    fig.add_annotation(dict(font=dict(color='black',size=11),
+                                        x=0,
+                                        y=-0.15,
+                                        showarrow=False,
+                                        text=metrics,
+                                        textangle=0,
+                                        xanchor='left',
+                                        xref="paper",
+                                        yref="paper"))
+
+
+    if output == "plot":
+        return fig
+    if output == "model":
+        return model
+    if output == "dataframe":
+        return dfm
+    if output == "decomposition":
+        decompose = seasonal_decompose(ypred, model='additive')
+        decompose.plot()
+        pyplot.show()
 
 def nsites_by_threshold(df,maxconc=50):
     '''Write number of sites with mean concentration above concentration threshold for concentrations ranging from 0 to maxconc ppbv'''
@@ -503,3 +926,77 @@ def plot_deviation_orig(siteRatios,title=None,minval=-30.,maxval=30.):
     return fig
 
 
+def merge_intervales_with_model(self, confidenceIntervals):
+    all_intervals = confidenceIntervals[["time","value","upper","lower","mid"]].copy()
+    all_intervals = all_intervals.resample("1H").mean()
+    all_intervals = all_intervals.reset_index()
+    all_intervals.columns = ['time', 'value',"upper",'lower','mid']
+    xg_preditions = self.predict()
+    model_data = self._mod[['time','pm25_rh35_gcc']].copy()
+
+    model_data['time'] = [dt.datetime(i.year,i.month,i.day,i.hour,0,0) for i in model_data['time']]
+    xg_preditions = xg_preditions.merge(model_data)
+    xg_preditions = xg_preditions.set_index('time').resample('1h').mean().reset_index()
+    all_intervals = all_intervals.merge(xg_preditions)
+    all_intervals = all_intervals.merge(xg_preditions)
+    all_intervals = all_intervals.set_index("time").resample("1D").mean()
+    return all_intervals
+
+def confidence_interval_error(CI_DF):
+    CI_DF["upper_error"] =  CI_DF.upper - CI_DF.value 
+    CI_DF["lower_error"] =  CI_DF.value - CI_DF.lower
+    lower_count = (to_plot_df["upper_error"] < 0).sum().sum()
+    upper_count = (to_plot_df["lower_error"] < 0).sum().sum()
+
+    count = lower_count + upper_count
+    total_collum = CI_DF.shape[0]
+
+    print ("Error percentage: {:0.2f} %".format(count/total_collum * 100))
+
+def calculate_error(predictions_intervals):
+    """
+    Calculate the absolute error associated with prediction intervals
+    """
+    predictions['absolute_error_lower'] = (predictions['lower'] - predictions["value"]).abs()
+    predictions['absolute_error_upper'] = (predictions['upper'] - predictions["value"]).abs()
+
+    predictions['absolute_error_interval'] = (predictions['absolute_error_lower'] + predictions['absolute_error_upper']) / 2
+    predictions['absolute_error_mid'] = (predictions['mid'] - predictions["value"]).abs()
+
+    predictions['in_bounds'] = predictions["value"].between(left=predictions['lower'], right=predictions['upper'])
+
+    return predictions
+
+def show_metrics(metrics):
+    """
+    Generate a boxplot of the metrics associated with prediction intervals
+    """
+    percent_in_bounds = metrics['in_bounds'].mean() * 100
+    metrics_to_plot = metrics[[c for c in metrics if 'absolute_error' in c]]
+
+    metrics_to_plot.columns = [column.split('_')[-1].title() for column in metrics_to_plot]
+
+
+    fig = px.box(
+        metrics_to_plot.melt(var_name="metric", value_name='Absolute Error'),
+        x="metric",
+        y="Absolute Error",
+        color='metric',
+        title=f"Error Metrics Boxplots    In Bounds = {percent_in_bounds:.2f}%",
+        height=800,
+        width=1000,
+        points=False,
+    )
+
+
+    d = []
+
+    for trace in fig.data:
+
+        trace['showlegend'] = False
+        d.append(trace)
+
+    # Make the plot look a little better
+    fig.data = d
+    fig['layout']['font'] = dict(size=20)
+    return fig
