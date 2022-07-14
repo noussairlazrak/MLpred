@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 # ! /usr/bin/env python
 """ 
-This file handles localized forecasts, baed on GMAO's GEOS CF and OpenAQ data
+mlpred.py
+
+This file handles localized forecasts, based on GMAO's GEOS CF and OpenAQ data
 .. codeauthor:: Christoph R Keller <christoph.a.keller@nasa.gov>
 """
 
@@ -33,6 +35,8 @@ from plotly.offline import iplot, plot, init_notebook_mode
 init_notebook_mode(connected=True)
 import cufflinks as cf
 cf.go_offline(connected=True)
+import warnings
+warnings.filterwarnings("ignore")
 
 
 #ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf.met_tavg_1hr_g1440x721_x1.zarr","geos-cf/zarr/geos-cf.chm_tavg_1hr_g1440x721_v1.zarr"]
@@ -48,6 +52,7 @@ DEFAULT_GASES = ['co', 'hcho', 'no','no2', 'noy', 'o3']
 
 PPB2UGM3 = {'no2':1.88,'o3':1.97}
 VVtoPPBV = 1.0e9
+
 
 class ObsSiteList:
     def __init__(self,ifile=None):
@@ -66,7 +71,6 @@ class ObsSiteList:
         ----------
         ofile: ofile
             Saves the list of sites to a pickle file
-        
        '''
         for isite in self._site_list:
             isite._obs = None
@@ -94,7 +98,7 @@ class ObsSiteList:
         minobs: int
             The minimal observations to filter
         minvalue: float
-            The minimal observation value
+            
         silent: bool
             Mute printed messages from the function
         
@@ -163,7 +167,23 @@ class ObsSiteList:
 
 
     def calc_ratios(self,start,end):
-        '''Get ratios between prediction and observation for each site in site_list'''
+        """ Get ratios between prediction and observation for each site in site_list'''
+        
+        
+        Parameters
+        ----------
+        start: datetime
+            The start date of training data set (GEOS-CF DATA and OpenAQ observation data)
+        end: datetime
+            The end date of training data set (GEOS-CF DATA and OpenAQ observation data)
+        
+        Returns
+        -------
+        dataframe
+            a dataframe containing the ratios between prediction and observation for each site in site_list.
+        """
+
+        
         predictions = self.predict_sites(start,end)
         siteIds = []; siteNames=[]
         siteLats = []; siteLons=[]
@@ -186,7 +206,21 @@ class ObsSiteList:
     
     
     def predict_sites(self,start,end):
-        '''Predict concentrations at all sites in the list of ObsSite objects'''
+        """Predict concentrations at all sites in the list of ObsSite objects
+         
+        Parameters
+        ----------
+        start: datetime
+            The start date of training data set (GEOS-CF DATA and OpenAQ observation data)
+        end: datetime
+            The end date of training data set (GEOS-CF DATA and OpenAQ observation data)
+        
+        Returns
+        -------
+        list
+            a list containing the prediction for each site
+        """
+        
         predictions = {}
         for isite in tqdm(self._site_list):
             isite.read_obs_and_mod(start=start,end=end)
@@ -196,7 +230,28 @@ class ObsSiteList:
 
 
     def plot_deviation(self,siteRatios,title='NO2 deviation',minval=-30.,maxval=30.,mapbox_access_token=None):
-        '''Make global map showing deviation betweeen predictions and observations'''
+        """Make global map showing deviation betweeen predictions and observations'''
+        
+        Parameters
+        ----------
+        siteRatios: list
+            The site siteRatios betweeen predictions and observations for all sites
+        title: str
+            Map title
+        minval: float
+        
+        maxval: float
+        
+        mapbox_access_token: str
+            Mapbox token, Mapbox uses access tokens to associate API requests with your account. You can find your access tokens, create new ones, or delete existing ones on your Access Tokens page at mapbox.com
+            
+        
+        Returns
+        -------
+        figure
+            a map of deviation from all sites
+        """
+        
         siteRatios['text'] = ['{0:} (ID {1:}, Pred={2:.2f}ppbv, Deviation={3:.2f}%'.format(i,j,k,l) for i,j,k,l in zip(siteRatios['name'],siteRatios['Id'],siteRatios['pred'],siteRatios['relChange'])]
         fig = go.Figure(data=go.Scattermapbox(
                 lon = siteRatios['lon'],
@@ -244,7 +299,15 @@ class ObsSite:
 
 
     def read_obs(self,data=None,resample=None,**kwargs):
-        '''Wrapper routine to read observations'''
+        """Wrapper routine to read observations
+        
+        Parameters
+        ----------
+        data: dataframe
+            check of the observation dataframe is not empty, otherwise this method will read observations from OpenAQ
+        resample: str
+            This provides the ability to resample observation to daily, n Days mean value, example: ("5D" means 5 days mean value resample)
+        """
         if data is None:
             data = self._read_openaq(**kwargs)
         if data is None:
@@ -276,7 +339,8 @@ class ObsSite:
 
 
     def read_mod(self,**kwargs):
-        '''Wrapper routine to read model data'''
+        """ Wrapper routine to read model data """
+        
         assert(self._lon is not None and self._lat is not None)
         if 'start' not in kwargs:
             kwargs['start'] = self._obs['time'].min()
@@ -288,7 +352,33 @@ class ObsSite:
 
 
     def train(self,target_var='value',skipvar=['time','location','lat','lon'],mindat=None,test_size=0.3,log=False,inc=False,xgbparams={'booster':'gbtree'},model_type = "xgboost-tuned",**kwargs):
-        '''Train XGBoost model using data in memory'''
+        
+        """Train XGBoost model using data in memory
+        
+        Parameters
+        ----------
+        target_var: str
+            the target to be predicted 
+        skipvar: list
+            list of values to be skipped in the training dataset
+        mindat: float
+        
+        test_size: float
+            the size of the testing data set (default value is 0.3 (30%))
+        
+        log: bool
+            
+        inc:bool
+        
+            set to false to predict concentration if target species is not a feature input
+        
+        xgbparams: list
+            list of xgboost model parameters
+        
+        model_type:
+            default: "xgboost-tuned" to select the tuned model or default model
+        """
+        
         dat = self._merge(**kwargs)
 
         if dat is None:
@@ -344,7 +434,7 @@ class ObsSite:
                 print('nmb = {:.2f}'.format(np.sum(ptest-ytestf)/np.sum(ytestf)))
                 
         if model_type == "xgboost-tuned":
-            bst = xgb.XGBRegressor(colsample_bytree = 0.3, learning_rate = 0.01, max_depth = 10, n_estimators = 1000)
+            bst = xgb.XGBRegressor(colsample_bytree = 0.3, learning_rate = 0.01, max_depth = 10, n_estimators = 1000, verbosity = 0)
             prepared_model=bst.fit(Xtrain, ytrain)
             ypred = bst.predict(dat[X.columns])
             score=prepared_model.score(Xtest,ytest)
@@ -384,7 +474,25 @@ class ObsSite:
 
 
     def predict(self,add_obs=True, model_type = "xgboost-tuned", **kwargs):
-        '''Make prediction for given time window and return predicted values along with observations'''
+        
+        """Make prediction for given time window and return predicted values along with observations
+        
+        Parameters
+        ----------
+        add_obs: dataframe
+            add observation data to geos-cf model data
+        model_type: str
+            predict using a predefined model, or default model, the predefined model is hyperparameter tuned
+        minval: float
+    
+            
+        
+        Returns
+        -------
+        dataframe
+            a dataframe containing the predictions vs observation
+        """
+            
         if add_obs:
             dat = self._merge(**kwargs)
         else:
@@ -412,7 +520,25 @@ class ObsSite:
 
 
     def plot(self,df,y=['observation','prediction'],ylabel=r'$\text{NO}_{2}\,[\text{ppbv}]$', **kwargs):
-        '''Make plot of prediction vs. observation, as generated by self.predict()'''
+
+        
+        """Make plot of prediction vs. observation, as generated by self.predict()
+        
+        Parameters
+        ----------
+        df: dataframe
+            dataframe containing the prediction and observation values generated by the predict() method
+        y: list
+            list of y-axis, 
+        ylabel: str
+            y-axis label 
+        
+        Returns
+        -------
+        figure
+            a timeseries figure of the predictions vs observation
+        """
+            
         title = 'Site = {0} ({1:.2f}N, {2:.2f}E)'.format(self._name,self._lat,self._lon)
         fig = px.line(df,x='time',y=y,labels={'value':ylabel},title=title,**kwargs)
         fig.update_layout(xaxis_title="Date (UTC)",yaxis_title=ylabel)
@@ -421,7 +547,22 @@ class ObsSite:
         return fig
     
     def explain(self,plot=False,feature=False):
-        ''' Plot SHAP values to explain how the features are driving the predictions'''
+        """ plot SHAP values to explain how the features are driving the predictions
+        
+        Parameters
+        ----------
+        plot: bool
+            specify the type of the plot, examples: "waterfall", "beeswarm", "scatter"
+        feature: str
+            if the plot type is "scatter", please define the input/ feature you want to get analysis for.
+        
+        
+        Returns
+        -------
+        figure
+            a Shap figure of the predictions
+        """
+        
         if (self._bst):
             explainer = shap.Explainer(self._bst)
             shap_values = explainer(self._x)
@@ -443,7 +584,25 @@ class ObsSite:
 
 
     def _merge(self,start=None,end=None,mod_blacklist=['lat','lon','lev']):
-        '''Merge model and observation and limit to given time window'''
+        
+        """ Merge model and observation and limit to given time window
+        
+        Parameters
+        ----------
+        start: datetime
+            The start date of training data set (GEOS-CF DATA and OpenAQ observation data)
+        end: datetime
+            The end date of training data set (GEOS-CF DATA and OpenAQ observation data)
+        
+        mod_blacklist: list
+            list of blacklisted features 
+        
+        Returns
+        -------
+        dataframe
+            a dataframe containing a merged dataframe of the model and observations
+        """
+        
         if self._mod is None or self._obs is None:
             if not self._silent:
                 print('Warning: cannot merge because mod or obs is None')
@@ -481,7 +640,43 @@ class ObsSite:
 
 
     def _read_model(self,ilon,ilat,start,end,resample=None,source=None,template=None,collections=None,remove_outlier=0,gases=DEFAULT_GASES,**kwargs):
-        '''Read model data'''
+
+        """ Read model data
+        
+        Parameters
+        ----------
+        ilon: float
+            site longitude
+        ilat:
+            site latitude 
+        
+        start: datetime
+            The start date of training data set (GEOS-CF DATA)
+        
+        end: datetime
+            The end date of training data set (GEOS-CF DATA)
+        
+        resample: str
+            This provides the ability to resample observation to daily, n Days mean value, example: ("5D" means 5 days mean value resample)
+        
+        source: str
+            specify the source file format (e.g. "opendap", "nc4", "zarr" for compressed format)
+            
+        template: str
+            the link template for each model data file type
+        
+        collections: list
+            model collection (e.g. "tavg1_2d_flx_Nx")
+            
+        gases: list
+            list with gas names used to identify fields that need to be converted from v/v to ppbv
+        
+        Returns
+        -------
+        dataframe
+            a dataframe containing the geos-cf model data
+        """
+        
         dfs = []
         source = self._modsrc if source is None else source
         if source=='opendap':
@@ -528,13 +723,34 @@ class ObsSite:
         # convert trace gases from v/v to ppbv
         for g in gases:
             if g in mod:
-                print('Convert from v/v to ppbv: {}'.format(g))
+                if not self._silent:
+                    print('Convert from v/v to ppbv: {}'.format(g))
                 mod[g] = mod[g] * VVtoPPBV
         return mod
 
 
     def _read_openaq(self,start=dt.datetime(2018,1,1),end=None,normalize=False,**kwargs):
-        '''Read OpenAQ observations and return in ppbv'''
+        
+        """ Read OpenAQ observations and convert to ppbv
+        
+        Parameters
+        ----------
+        start: datetime
+            The start date of training data set (GEOS-CF DATA)
+        
+        end: datetime
+            The end date of training data set (GEOS-CF DATA)
+        
+        normalize: bool
+            if True, normalize the observatins values with standard deviation
+        
+        
+        Returns
+        -------
+        dataframe
+            a dataframe containing the observation data
+        """
+        
         end = start+relativedelta(years=1) if end is None else end
         url = OPENAQ_TEMPLATE.replace('{ID}',str(self._id)).replace('{PARA}',self._species).replace('{Y1}',str(start.year)).replace('{M1}','{:02d}'.format(start.month)).replace('{D1}','{:02d}'.format(start.day)).replace('{Y2}',str(end.year)).replace('{M2}','{:02d}'.format(end.month)).replace('{D2}','{:02d}'.format(end.day))
         allobs = read_openaq(url,silent=self._silent,**kwargs)
@@ -560,7 +776,30 @@ class ObsSite:
         return outobs
     
 
+    
+        
     def explain_model(model,X,plot,feature = False):
+        """ explain model via Shap values
+        
+        Parameters
+        ----------
+        model: model
+            predefined model in memory
+        
+        X: dataframe
+            dataframe in memory
+        
+        plot: str
+            type of plot to be returned (e.g. "waterfall", "beeswarm", "scatter")
+        
+        feature:str
+            when using scatter plot, please specify the feature to run shap analysis for
+             
+        Returns
+        -------
+        figure
+            a Shap values plot
+        """
         try:
             explainer = shap.Explainer(model)
             shap_values = explainer(X)
@@ -725,7 +964,7 @@ class ObsSite:
             
         lower_model = GradientBoostingRegressor(loss="quantile", alpha=LOWER_ALPHA, n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, learning_rate = LEARNING_RATE)
 
-        mid_model = xgb.XGBRegressor(loss="ls", n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, colsample_bytree = colsample_bytree, learning_rate = LEARNING_RATE)
+        mid_model = xgb.XGBRegressor(loss="ls", n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, colsample_bytree = colsample_bytree, learning_rate = LEARNING_RATE, verbosity = 0)
 
         upper_model = GradientBoostingRegressor(loss="quantile", alpha=UPPER_ALPHA, n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, learning_rate = LEARNING_RATE)
         
@@ -755,13 +994,111 @@ class ObsSite:
 
 
         if OUTPUT == "PLOT":
+            to_plot.sort_index().dropna().resample("2D").mean()
             fig = self.plot_intervals(to_plot, start="2021-01-19", stop="2022-02-28")
             return fig
         if OUTPUT == "dataframe":
             return to_plot
         
+    def get_location_forecasts_plots(self, start_date, end_date, hpTunning= False, errorPrediction = False, output = "dataframe", **kwargs):
+        self.read_obs(start=start_date,end=end_date)
+        self._silent = True
+        self.read_mod()
+        target_var='value'
+        skipvar=['time','location','lat','lon',]
+        all_data = self._merge()
+        yvar = ['value']
+        blacklist = yvar + skipvar
+        xvar = [i for i in all_data.columns if i not in blacklist]
+        x = all_data[xvar]
+        y = all_data[yvar]
 
+        X_train, X_test, Y_train, Y_test= train_test_split(x, y, test_size=0.3, random_state=7)
+
+        if hpTunning:
+            model = xgb.XGBRegressor(verbosity = 0)
+            gridSerch(model,X_train,Y_train)
+        else:
+            model = xgb.XGBRegressor(colsample_bytree = 0.3, learning_rate = 0.01, max_depth = 4, n_estimators = 2000)
+
+
+
+        #Train
+
+        prepared_model=model.fit(X_train, Y_train)
+
+        #Prediction DF
+
+        ypred = model.predict(all_data[x.columns])
+
+        #Metrics
+        score=prepared_model.score(X_test,Y_test)
+        Target_predicted=prepared_model.predict(X_test)
+        MSE=round(mean_squared_error(Y_test,Target_predicted), 2)
+        RMSE=round(mean_squared_error(Y_test,Target_predicted, squared=False) , 2)
+        MAE = round(mean_absolute_error(Y_test, Target_predicted) , 2)
+        r2=round(r2_score(Y_test,Target_predicted) , 2)
+
+        training_acuracy = round(model.score(X_train, Y_train), 2)
+        testing_acuracy = round(model.score(X_test, Y_test), 2)
+
+        #Plotting
+
+        df = all_data[['time','value']].copy()
+        df['prediction'] = ypred
+        df['residuals'] = df['prediction'] - df['value']
+
+        model_no2 = self._mod[['time','no2']].copy()
+        model_no2['time'] = [dt.datetime(i.year,i.month,i.day,i.hour,0,0) for i in model_no2['time']]
+
+        dfm = df.merge(model_no2)
+        dfm = dfm.set_index('time').resample('1D').mean().reset_index()
+
+        metrics =  ' Validation score: ' + str(testing_acuracy)+' | RMSE: '+ str(RMSE) + '| MAE: '+ str(MAE) +'| r2:' + str(r2)
+
+
+        fig = self.plot(dfm,y=['value','prediction'])
+
+
+        fig.add_annotation(dict(font=dict(color='black',size=11),
+                                            x=0,
+                                            y=-0.15,
+                                            showarrow=False,
+                                            text=metrics,
+                                            textangle=0,
+                                            xanchor='left',
+                                            xref="paper",
+                                            yref="paper"))
+
+        self._bst = model
+        self._x = x
+        self._xcolumns = x.columns
+        self.Xtrain = X_train
+        self.Xtest = X_test
+        self.ytrain = Y_train
+        self.ytest = Y_test
+        
+        
+        if output == "plot":
+            return fig
+        if output == "model":
+            return model
+        if output == "dataframe":
+            return dfm
+        if output == "decomposition":
+            decompose = seasonal_decompose(ypred, model='additive')
+            decompose.plot()
+            pyplot.show()
+        if output == "confidence_intervals_plot":
+            return self.ConfidenceIntervals(OUTPUT = "PLOT")
+        if output == "confidence_intervals_dataframe":
+            return self.ConfidenceIntervals(OUTPUT = "dataframe")
+
+
+            
 ## General Functions
+
+
 
 def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0,**kwargs):
         '''Helper routine to read OpenAQ via API (from given url) and create a dataframe of the data'''
@@ -800,88 +1137,7 @@ def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0,**kw
             return None
 
 
-def get_location_forecasts_plots(site_id, species=False, hpTunning= False, errorPrediction = False, output = False):
-    site_data = mlpred.ObsSite(10812,model_source='s3',species="no2")
-    site_data.read_obs(start=dt.datetime(2021,1,19),end=dt.datetime(2022,2,28))
-    site_data.read_mod()
 
-    target_var='value'
-    skipvar=['time','location','lat','lon',]
-    all_data = site_data._merge()
-    yvar = ['value']
-    blacklist = yvar + skipvar
-    xvar = [i for i in all_data.columns if i not in blacklist]
-    x = all_data[xvar]
-    y = all_data[yvar]
-
-    X_train, X_test, Y_train, Y_test= train_test_split(x, y, test_size=0.3, random_state=7)
-
-    if hpTunning:
-        model = xgb.XGBRegressor()
-        gridSerch(model,X_train,Y_train)
-    else:
-        model = xgb.XGBRegressor(colsample_bytree = 0.3, learning_rate = 0.01, max_depth = 4, n_estimators = 2000)
-
-
-
-    #Train
-
-    prepared_model=model.fit(X_train, Y_train)
-
-    #Prediction DF
-
-    ypred = model.predict(all_data[x.columns])
-
-    #Metrics
-    score=prepared_model.score(X_test,Y_test)
-    Target_predicted=prepared_model.predict(X_test)
-    MSE=round(mean_squared_error(Y_test,Target_predicted), 2)
-    RMSE=round(mean_squared_error(Y_test,Target_predicted, squared=False) , 2)
-    MAE = round(mean_absolute_error(Y_test, Target_predicted) , 2)
-    r2=round(r2_score(Y_test,Target_predicted) , 2)
-
-    training_acuracy = round(model.score(X_train, Y_train), 2)
-    testing_acuracy = round(model.score(X_test, Y_test), 2)
-
-    #Plotting
-
-    df = all_data[['time','value']].copy()
-    df['prediction'] = ypred
-    df['residuals'] = df['prediction'] - df['value']
-
-    model_no2 = site_data._mod[['time','no2']].copy()
-    model_no2['time'] = [dt.datetime(i.year,i.month,i.day,i.hour,0,0) for i in model_no2['time']]
-
-    dfm = df.merge(model_no2)
-    dfm = dfm.set_index('time').resample('1D').mean().reset_index()
-
-    metrics =  ' Validation score: ' + str(testing_acuracy)+' | RMSE: '+ str(RMSE) + '| MAE: '+ str(MAE) +'| r2:' + str(r2)
-
-
-    fig = site_data.plot(dfm,y=['value','prediction'])
-
-
-    fig.add_annotation(dict(font=dict(color='black',size=11),
-                                        x=0,
-                                        y=-0.15,
-                                        showarrow=False,
-                                        text=metrics,
-                                        textangle=0,
-                                        xanchor='left',
-                                        xref="paper",
-                                        yref="paper"))
-
-
-    if output == "plot":
-        return fig
-    if output == "model":
-        return model
-    if output == "dataframe":
-        return dfm
-    if output == "decomposition":
-        decompose = seasonal_decompose(ypred, model='additive')
-        decompose.plot()
-        pyplot.show()
 
 def nsites_by_threshold(df,maxconc=50):
     '''Write number of sites with mean concentration above concentration threshold for concentrations ranging from 0 to maxconc ppbv'''
@@ -941,62 +1197,3 @@ def merge_intervales_with_model(self, confidenceIntervals):
     all_intervals = all_intervals.merge(xg_preditions)
     all_intervals = all_intervals.set_index("time").resample("1D").mean()
     return all_intervals
-
-def confidence_interval_error(CI_DF):
-    CI_DF["upper_error"] =  CI_DF.upper - CI_DF.value 
-    CI_DF["lower_error"] =  CI_DF.value - CI_DF.lower
-    lower_count = (to_plot_df["upper_error"] < 0).sum().sum()
-    upper_count = (to_plot_df["lower_error"] < 0).sum().sum()
-
-    count = lower_count + upper_count
-    total_collum = CI_DF.shape[0]
-
-    print ("Error percentage: {:0.2f} %".format(count/total_collum * 100))
-
-def calculate_error(predictions_intervals):
-    """
-    Calculate the absolute error associated with prediction intervals
-    """
-    predictions['absolute_error_lower'] = (predictions['lower'] - predictions["value"]).abs()
-    predictions['absolute_error_upper'] = (predictions['upper'] - predictions["value"]).abs()
-
-    predictions['absolute_error_interval'] = (predictions['absolute_error_lower'] + predictions['absolute_error_upper']) / 2
-    predictions['absolute_error_mid'] = (predictions['mid'] - predictions["value"]).abs()
-
-    predictions['in_bounds'] = predictions["value"].between(left=predictions['lower'], right=predictions['upper'])
-
-    return predictions
-
-def show_metrics(metrics):
-    """
-    Generate a boxplot of the metrics associated with prediction intervals
-    """
-    percent_in_bounds = metrics['in_bounds'].mean() * 100
-    metrics_to_plot = metrics[[c for c in metrics if 'absolute_error' in c]]
-
-    metrics_to_plot.columns = [column.split('_')[-1].title() for column in metrics_to_plot]
-
-
-    fig = px.box(
-        metrics_to_plot.melt(var_name="metric", value_name='Absolute Error'),
-        x="metric",
-        y="Absolute Error",
-        color='metric',
-        title=f"Error Metrics Boxplots    In Bounds = {percent_in_bounds:.2f}%",
-        height=800,
-        width=1000,
-        points=False,
-    )
-
-
-    d = []
-
-    for trace in fig.data:
-
-        trace['showlegend'] = False
-        d.append(trace)
-
-    # Make the plot look a little better
-    fig.data = d
-    fig['layout']['font'] = dict(size=20)
-    return fig
