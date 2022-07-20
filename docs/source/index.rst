@@ -34,7 +34,7 @@ Getting Started Example
 .. code-block:: Python
 
     site_init = mlpred.ObsSite(OPENAQID,model_source='s3',species= "SPECIES (NO2, PM25, O3)")
-    forecasts = site_init.get_location_forecasts_plots(start_date,end_date=dt.datetime(2022,2,28))
+    forecasts_time_series = site_init.get_location_forecasts(dt.datetime(START_DATE),end_date=dt.datetime(END_DATE), output ="plot")
 
 
 .. toctree::

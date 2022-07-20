@@ -30,4 +30,4 @@ import MLpred.funcs
 ```python
 # train the model on the cite data and generate a forecast plot based on GEOS-CF and OpenAQ data
 site_init = mlpred.ObsSite(OPENAQID,model_source='s3',species= "SPECIES (NO2, PM25, O3)")
-forecasts = site_init.get_location_forecasts_plots(dt.datetime(START_DATE),end_date=dt.datetime(END_DATE))
+forecasts = site_init.get_location_forecasts(dt.datetime(START_DATE),end_date=dt.datetime(END_DATE))
