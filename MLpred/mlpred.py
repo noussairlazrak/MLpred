@@ -960,7 +960,27 @@ class ObsSite:
         return fig
 
     def ConfidenceIntervals(self, LOWER_ALPHA = 0.15, UPPER_ALPHA = 0.85, N_ESTIMATORS = 1000, MAX_DEPTH = 5, LEARNING_RATE = 0.01, colsample_bytree = 0.3, OUTPUT = "plot", **kwargs):
-
+        """ explain model via Shap values
+        
+        Parameters
+        ----------
+        model: model
+            predefined model in memory
+        
+        X: dataframe
+            dataframe in memory
+        
+        plot: str
+            type of plot to be returned (e.g. "waterfall", "beeswarm", "scatter")
+        
+        feature:str
+            when using scatter plot, please specify the feature to run shap analysis for
+             
+        Returns
+        -------
+        figure
+            a Shap values plot
+        """
             
         lower_model = GradientBoostingRegressor(loss="quantile", alpha=LOWER_ALPHA, n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, learning_rate = LEARNING_RATE)
 
@@ -1000,7 +1020,32 @@ class ObsSite:
         if OUTPUT == "dataframe":
             return to_plot
         
-    def get_location_forecasts_plots(self, start_date, end_date, hpTunning= False, errorPrediction = False, output = "dataframe", **kwargs):
+    def get_location_forecasts(self, start, end, hpTunning= False, errorPrediction = False, output = "dataframe", **kwargs):
+        """ Read model data
+        
+        Parameters
+        ----------
+        start: datetime
+            The start date of training data set (GEOS-CF DATA)
+        
+        end: datetime
+            The end date of training data set (GEOS-CF DATA)
+        
+        hpTunning: bool
+            This parameter allows training a model for the location with automatic hyperparameter tuning to find the best model parameters for this location, set to false, if you wish to use default model parameters
+        
+        errorPrediction: bool
+            This allows error quantification and plot prediction error time series with the forecasted error via Autoregression of Residual Error
+            
+        output: str
+            Please specify the output of the locaiton forecasts 
+            output ="plot" to return time series forecast for this location
+            output = "model" to return the model in memory for this location
+            output = "dataframe" to return the timeseries forecasts in dataframe format for this location
+            output ="decomposition": to return seasunal decomposition for this location
+            output = "confidence_intervals_plot" to return confidence intervals plots for this location
+            output = "confidence_intervals_dataframe" to return confidence intervals plots for this location
+        """
         self.read_obs(start=start_date,end=end_date)
         self._silent = True
         self.read_mod()
@@ -1101,7 +1146,22 @@ class ObsSite:
 
 
 def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0,**kwargs):
-        '''Helper routine to read OpenAQ via API (from given url) and create a dataframe of the data'''
+        """ Helper routine to read OpenAQ via API (from given url) and create a dataframe of the data
+        
+        Parameters
+        ----------
+        url: str
+            OpenAQ API url, with the location lat lon, sepcies and date. Please see: https://docs.openaq.org/docs
+        
+        reference_grade_only: bool
+            Selects the reference grade values only from OpenAQ response
+        
+        silent: bool
+            Display notifications and warnings from this method
+        
+        remove_outlier: int
+            This allows removing outliers from observations 
+        """
         if not silent:
             print('Quering  {}'.format(url))
         r = requests.get( url )
