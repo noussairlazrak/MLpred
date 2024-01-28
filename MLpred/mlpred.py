@@ -11,10 +11,13 @@ This file handles localized forecasts, based on GMAO's GEOS CF and OpenAQ data
 # Import python native libs
 import sys
 import os
+import re
 import fsspec
 import numpy as np
 import pandas as pd
 import datetime as dt
+from datetime import timedelta
+import time
 import xarray as xr
 import xgboost as xgb
 import plotly.express as px
@@ -22,7 +25,7 @@ import plotly.graph_objects as go
 import requests
 import pickle
 from dateutil.relativedelta import relativedelta 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold, TimeSeriesSplit
 from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, mean_absolute_error, median_absolute_error
 from math import sqrt
 from tqdm import tqdm as tqdm
@@ -30,18 +33,25 @@ from sklearn.metrics import mean_squared_error as MSE_1
 import shap
 from sklearn.base import BaseEstimator
 from sklearn.ensemble import GradientBoostingRegressor
-from ipywidgets import interact, widgets
+from sklearn.model_selection import RandomizedSearchCV
+
 from plotly.offline import iplot, plot, init_notebook_mode
 init_notebook_mode(connected=True)
-import cufflinks as cf
-cf.go_offline(connected=True)
-import warnings
-warnings.filterwarnings("ignore")
+import matplotlib.pyplot as plt
 
+import logging
+from sklearn.model_selection import learning_curve, GridSearchCV
+
+import lightgbm as lgb
+from pyod.models.iforest import IForest
+import warnings
+warnings.filterwarnings('ignore')
 
 #ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf.met_tavg_1hr_g1440x721_x1.zarr","geos-cf/zarr/geos-cf.chm_tavg_1hr_g1440x721_v1.zarr"]
 ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf-rpl.zarr"]
-S3_TEMPLATE = "s3://eis-dh-fire/geos-cf-rpl.zarr"
+S3_TEMPLATE = "s3://dh-eis-fire-usw2-shared/geos-cf-rpl.zarr"
+S3_FORECASTS_TEMPLATE = "s3://dh-eis-fire-usw2-shared/geos-cf-fcst-latest.zarr"
+S3_ANALYSIS_TEMPLATE = "s3://dh-eis-fire-usw2-shared/geos-cf-ana-latest.zarr"
 OPENDAP_TEMPLATE = "https://opendap.nccs.nasa.gov/dods/gmao/geos-cf/fcast/met_tavg_1hr_g1440x721_x1.latest"
 M2_TEMPLATE = "/home/ftei-dsw/Projects/SurfNO2/data/M2/{c}/small/*.{c}.%Y%m*.nc4"
 M2_COLLECTIONS = ["tavg1_2d_flx_Nx","tavg1_2d_lfo_Nx","tavg1_2d_slv_Nx"]
@@ -54,6 +64,10 @@ PPB2UGM3 = {'no2':1.88,'o3':1.97}
 VVtoPPBV = 1.0e9
 
 
+
+## converting mol m2 to geos-cf no2 total:  totcol * 6.022e23 / 1e4 / 1e15
+
+
 class ObsSiteList:
     def __init__(self,ifile=None):
         '''
@@ -62,7 +76,6 @@ class ObsSiteList:
         self._site_list = None
         if ifile is not None:
             self.load(ifile)
-
 
     def save(self,ofile='site_list.pkl'):
         '''Write out a site_list, discarding all model and observation data beforehand (but keeping the trained XGBoost instances)
@@ -159,7 +172,7 @@ class ObsSiteList:
                 if not isite._silent:
                     print('Not enough observations found for site {}'.format(i))
                 continue
-            isite.read_mod()
+            #isite.read_mod()
             rc = isite.train(mindat=minobs,log=log,xgbparams=xgbparams)
             if rc==0:
                 self._site_list.append(isite)
@@ -167,6 +180,7 @@ class ObsSiteList:
 
 
     def calc_ratios(self,start,end):
+        
         """ Get ratios between prediction and observation for each site in site_list'''
         
         
@@ -182,7 +196,6 @@ class ObsSiteList:
         dataframe
             a dataframe containing the ratios between prediction and observation for each site in site_list.
         """
-
         
         predictions = self.predict_sites(start,end)
         siteIds = []; siteNames=[]
@@ -203,6 +216,7 @@ class ObsSiteList:
         siteRatios = pd.DataFrame({'Id':siteIds,'name':siteNames,'lat':siteLats,'lon':siteLons,'ratio':ratios,'obs':meanObs,'pred':meanPred})
         siteRatios['relChange'] = (siteRatios['ratio']-1.0)*100.0
         return siteRatios
+    
     
     
     def predict_sites(self,start,end):
@@ -308,8 +322,65 @@ class ObsSite:
         resample: str
             This provides the ability to resample observation to daily, n Days mean value, example: ("5D" means 5 days mean value resample)
         """
+        source = kwargs.get('source')
         if data is None:
-            data = self._read_openaq(**kwargs)
+            
+            if source == "local":
+                url = kwargs.get('url')
+                time_col = kwargs.get('time_col')
+                unit = kwargs.get('unit')
+                date_format = kwargs.get('date_format')
+                value_collum = kwargs.get('value_collum')
+                lat_col = kwargs.get('lat_col')
+                lon_col = kwargs.get('lon_col')
+                species = kwargs.get('species')
+                lname = kwargs.get('lname')
+                lat = kwargs.get('lat')
+                lon = kwargs.get('lon')
+                
+                
+                data = read_local_obs(obs_url = url, time_col =time_col, date_format = date_format, value_collum=value_collum, lat_col= lat_col , lon_col= lon_col,  species = species, unit = unit, lat=lat, lon = lon)
+                
+            elif source == "pandora":
+                url = kwargs.get('url')
+                time_col = kwargs.get('time_col')
+                date_format = kwargs.get('date_format')
+                value_collum = kwargs.get('value_collum')
+                lat_col = kwargs.get('lat_col')
+                lon_col = kwargs.get('lon_col')
+                species = kwargs.get('species')
+                lname = kwargs.get('lname')
+                
+                data = read_pandora(file_path = url ,csv_start_line = None, time_col = 0, date_format = "%Y%m%dT%H%M%S.%fZ", value_collum=value_collum, lat= 999 , lon= 999, species = species, location_name = lname, silent=False)
+                #print(data)
+
+            else:
+                data = pd.DataFrame()
+                start_date = kwargs['start'] if 'start' in kwargs else dt.datetime(2018, 1, 1)
+                end_date = kwargs['end'] if 'end' in kwargs else dt.datetime(2020, 1, 1)
+
+
+                month_difference = (end_date.year - start_date.year) * 12 + end_date.month - start_date.month
+
+                three_month_periods = month_difference // 3
+
+
+                for i in range(three_month_periods+1):
+                    
+                    period_start = start_date + relativedelta(months=3*i)
+                    period_end = start_date + relativedelta(months=3*(i+1)) - timedelta(days=1)  
+                    if period_end > end_date: 
+                        period_end = end_date
+                    if not self._silent:
+                        print(f"3-month period retrieval {i+1}: Start date - {period_start}, End date - {period_end}")
+                    obs = self._read_openaq(start = period_start, end = period_end)
+                    data = data.append(obs)
+
+                    folder_path = 'obs/' 
+                    if not os.path.exists(folder_path):
+                        os.makedirs(folder_path)
+                data.to_csv(f"{folder_path}{self._id}.csv", index=False)
+
         if data is None:
             if not self._silent:
                 print('Warning: no observations found!')
@@ -583,7 +654,7 @@ class ObsSite:
     
 
 
-    def _merge(self,start=None,end=None,mod_blacklist=['lat','lon','lev']):
+    def _merge(self,start=None,end=None,mod_blacklist=['lat','lon','lev'], interpolation = True):
         
         """ Merge model and observation and limit to given time window
         
@@ -611,7 +682,12 @@ class ObsSite:
         ivars = [i for i in self._mod.columns if i not in mod_blacklist] 
         # interpolate model data to openaq time stamps
         mdat = self._mod[ivars].merge(self._obs,on=['time'],how='outer').sort_values(by='time')
-        idat = mdat.set_index('time').interpolate(method='slinear').reset_index()
+        
+        if interpolation: 
+            idat = mdat.set_index('time').interpolate(method='slinear').reset_index()
+        else:
+            idat = mdat
+        
         dat = idat.loc[idat['time'].isin(self._obs['time'])].copy()
         start = start if start is not None else dat['time'].min()
         end = end if end is not None else dat['time'].max()
@@ -699,20 +775,43 @@ class ObsSite:
                 dfs.append(ids)
         if source=='zarr' or source=='s3':
             if template is None:
-                template = ZARR_TEMPLATE if source=='zarr' else S3_TEMPLATE
+                template = ZARR_TEMPLATE if source=='zarr' else [S3_TEMPLATE,S3_FORECASTS_TEMPLATE]
             template = template if isinstance(template,type([])) else [template]
             for t in template:
-                if not self._silent:
-                    print('Reading {}...'.format(t))
-                ipath = fsspec.get_mapper(t) if source=='s3' else t
-                ids = xr.open_zarr(ipath).sel(lon=ilon,lat=ilat,lev=1,method='nearest').sel(time=slice(start,end)).load().to_dataframe().reset_index()
+                print('Reading {}...'.format(t))
+                ipath = fsspec.get_mapper(t)
+                ids = xr.open_zarr(ipath).sel(lon=ilon, lat=ilat, lev=1, method='nearest').sel(time=slice(start, end)).load().to_dataframe().reset_index()
+                if not ids.empty:
+                    dfs.append(ids) 
+
+
+        
+                   
+        if source=='local':
+            url = kwargs.get('url')
+            if not self._silent:
+                print(f'Reading csv file: {url}')
+                
+            start = pd.Timestamp(start) 
+            end= pd.Timestamp(end)   
+            df = pd.read_csv(url)
+            df['time'] = pd.to_datetime(df['time'])
+            ids = df[(df['time'] >= start) & (df['time'] <= end)]
+            if not ids.empty:
                 dfs.append(ids)
-        mod = dfs[0]
-        for d in dfs[1:]:
-            merge_on = ['time','lat','lon']
-            if 'lev' in d and 'lev' in mod:
-                merge_on.append('lev')
-            mod = mod.merge(d,on=merge_on)
+
+        if dfs:
+            dfs_concatenated = pd.concat(dfs, ignore_index=True)
+        else:
+            dfs_concatenated = pd.DataFrame()    
+
+        mod = dfs_concatenated
+
+        mod['time'] = [pd.to_datetime(i) for i in mod['time']]
+        mod['month'] = [i.month for i in mod['time']]
+        mod['hour'] = [i.hour for i in mod['time']]
+        mod['weekday'] = [i.weekday() for i in mod['time']]
+
         mod['time'] = [pd.to_datetime(i) for i in mod['time']]
         if resample is not None:
             mod = mod.set_index('time').resample(resample).mean().reset_index()
@@ -760,6 +859,31 @@ class ObsSite:
         # convert everything to ppbv
         if self._species != 'pm25':
             assert(self._species in PPB2UGM3)
+            
+            conv_factor = PPB2UGM3[self._species]
+            print(f" converting to ppbv with conv_factor {conv_factor}")
+            obs.loc[obs['unit']=='ppm','value'] = obs.loc[obs['unit']=='ppm','value']*1000.0
+            obs.loc[obs['unit']=='µg/m³','value'] = obs.loc[obs['unit']=='µg/m³','value']*1./conv_factor
+        # subset to relevant columns
+        outobs = obs[['time','location','value']].copy()
+        if normalize:
+            outobs['value'] = (outobs['value']-outobs['value'].mean())/outobs['value'].std()
+        if 'coordinates.latitude' in obs.columns and 'coordinates.longitude' in obs.columns:
+            outobs['lat'] = obs['coordinates.latitude']
+            outobs['lon'] = obs['coordinates.longitude']
+        else:
+            if not self._silent:
+                print('Warning: no coordinates in dataset')
+        return outobs
+
+        url = OPENAQ_TEMPLATE.replace('{ID}',str(self._id)).replace('{PARA}',self._species).replace('{Y1}',str(start.year)).replace('{M1}','{:02d}'.format(start.month)).replace('{D1}','{:02d}'.format(start.day)).replace('{Y2}',str(end.year)).replace('{M2}','{:02d}'.format(end.month)).replace('{D2}','{:02d}'.format(end.day))
+        allobs = read_openaq(url,silent=self._silent,**kwargs)
+        if allobs is None:
+            return None
+        obs = allobs.loc[(allobs['parameter']==self._species)&(~np.isnan(allobs['value']))&(allobs['value']>=0.0)].copy()
+        # convert everything to ppbv
+        if self._species != 'pm25':
+            assert(self._species in PPB2UGM3)
             conv_factor = PPB2UGM3[self._species]
             obs.loc[obs['unit']=='ppm','value'] = obs.loc[obs['unit']=='ppm','value']*1000.0
             obs.loc[obs['unit']=='µg/m³','value'] = obs.loc[obs['unit']=='µg/m³','value']*1./conv_factor
@@ -775,7 +899,6 @@ class ObsSite:
                 print('Warning: no coordinates in dataset')
         return outobs
     
-
     
         
     def explain_model(model,X,plot,feature = False):
@@ -832,7 +955,7 @@ class ObsSite:
     def rmse(predictions, targets):
         return np.sqrt(((predictions - targets) ** 2).mean())
 
-    def gridSerch(model,X_train,Y_train):
+    def gridSerch(self,model,X_train,Y_train,**kwargs):
         print('Tunning the model hyper parameter for this location')
         params = { 'max_depth': [3, 5, 6, 10, 15, 20],
                'learning_rate': [0.01, 0.1, 0.2, 0.3],
@@ -1020,131 +1143,183 @@ class ObsSite:
         if OUTPUT == "dataframe":
             return to_plot
         
-    def get_location_forecasts(self, start, end, hpTunning= False, errorPrediction = False, output = "dataframe", **kwargs):
-        """ Read model data
-        
-        Parameters
-        ----------
-        start: datetime
-            The start date of training data set (GEOS-CF DATA)
-        
-        end: datetime
-            The end date of training data set (GEOS-CF DATA)
-        
-        hpTunning: bool
-            This parameter allows training a model for the location with automatic hyperparameter tuning to find the best model parameters for this location, set to false, if you wish to use default model parameters
-        
-        errorPrediction: bool
-            This allows error quantification and plot prediction error time series with the forecasted error via Autoregression of Residual Error
-            
-        output: str
-            Please specify the output of the locaiton forecasts 
-            output ="plot" to return time series forecast for this location
-            output = "model" to return the model in memory for this location
-            output = "dataframe" to return the timeseries forecasts in dataframe format for this location
-            output ="decomposition": to return seasunal decomposition for this location
-            output = "confidence_intervals_plot" to return confidence intervals plots for this location
-            output = "confidence_intervals_dataframe" to return confidence intervals plots for this location
-        """
-        self.read_obs(start=start_date,end=end_date)
-        self._silent = True
-        self.read_mod()
-        target_var='value'
-        skipvar=['time','location','lat','lon',]
-        all_data = self._merge()
-        yvar = ['value']
-        blacklist = yvar + skipvar
-        xvar = [i for i in all_data.columns if i not in blacklist]
-        x = all_data[xvar]
-        y = all_data[yvar]
+def get_localised_forecast(**kwargs):
+    """Routine to generate localised forecasts based on GEOS CF and local observation data.
 
-        X_train, X_test, Y_train, Y_test= train_test_split(x, y, test_size=0.3, random_state=7)
+    Parameters
+    ----------
+    site_settings: dict
+        A dictionary containing site-specific settings.
+        l_name : str
+            Name of the location.
+        species : str
+            Type of species for which forecast is generated.
+        silent : bool
+            Flag to suppress notifications and warnings.
+        lat : float
+            Latitude of the location.
+        lon : float
+            Longitude of the location.
+        model_src : str
+            Source of the model for forecast generation.
+        obs_src : str
+            Source of the observation data.
+        openaq_id : str
+            ID associated with the OpenAQ data.
+        model_url : str
+            URL for accessing the GEOS CF model.
+        obs_url : str
+            URL for accessing the observation data.
+        start : str
+            Start date for the forecast.
+        end : str
+            End date for the forecast.
+        resample : str
+            Resampling frequency for the data.
+        model_tuning : str
+            Model tuning parameters.
+        unit : str
+            Unit of measurement for the forecast.
+        interpolation : str
+            Interpolation method for data processing.
+        remove_outlier : int
+            Threshold for removing outliers from observations.
 
-        if hpTunning:
-            model = xgb.XGBRegressor(verbosity = 0)
-            gridSerch(model,X_train,Y_train)
+    obs_settings: dict
+        A dictionary containing observation-specific settings.
+        time_col : str
+            Column name for time in the observation data.
+        date_format : str
+            Format of the date in the observation data.
+        obs_val_col : str
+            Column name for observed values.
+        lat_col : str
+            Column name for latitude in the observation data.
+        lon_col : str
+            Column name for longitude in the observation data.
+    """
+    location_name = kwargs["site_settings"]["l_name"]
+    species = kwargs["site_settings"]["species"]
+    silent = kwargs["site_settings"]["silent"]
+    lat = kwargs["site_settings"]["lat"]
+    lon = kwargs["site_settings"]["lon"]
+    model_source = kwargs["site_settings"]["model_src"]
+    observation_source = kwargs["site_settings"]["obs_src"]
+    openaq_id = kwargs["site_settings"]["openaq_id"]
+    GEOS_CF = kwargs["site_settings"]["model_url"]
+    OBS_URL = kwargs["site_settings"]["obs_url"]
+    start = kwargs["site_settings"]["start"]
+    end = kwargs["site_settings"]["end"]
+    resample = kwargs["site_settings"]["resample"]
+    model_tuning = kwargs["site_settings"]["model_tuning"]
+    unit = kwargs["site_settings"]["unit"]
+    interpolation = kwargs["site_settings"]["interpolation"]
+    remove_outlier = kwargs["site_settings"]["remove_outlier"]
+    
+    time_col = kwargs["obs_settings"]["time_col"]
+    date_format = kwargs["obs_settings"]["date_format"]
+    obs_val_col = kwargs["obs_settings"]["obs_val_col"]
+    lat_col = kwargs["obs_settings"]["lat_col"]
+    lon_col = kwargs["obs_settings"]["lon_col"]
+
+    ## Data preparation
+    all_obs = pd.DataFrame() 
+    isite = ObsSite(openaq_id ,model_source=model_source,species= species, observation_source = observation_source)
+    isite._silent = silent
+    isite.read_obs(source = observation_source, url = OBS_URL, time_col = time_col, date_format = date_format, value_collum=obs_val_col, lat_col= lat_col , lon_col= lon_col,  species = species , lat = lat, lon = lon, unit=unit) 
+
+    all_obs = isite._obs
+    
+    isite.read_mod(source = model_source, url = GEOS_CF)
+    all_data = isite._merge(interpolation = interpolation)
+    all_data.dropna()
+    
+    yvar='value'
+    fvar = 'pm25_rh35_gcc' if isite._species=='pm25' else isite._species.lower()
+    
+    ## Unusual deiffierence between OBS and Model 
+    difference = all_data[fvar].mean()/all_data[yvar].mean()    
+    log_if_condition((difference > 2) , f'UNIT ERROR: GEOS CF IS HIGHER BY: {difference} IN LOCATION: {location_name} SPECIES: {species.lower()}')                    
+    
+    skipvar=['time','location','lat','lon','totcol_co', 'totcol_hcho', 'totcol_no2', 'totcol_o3', 'totcol_so2', 'tropcol_co', 'tropcol_hcho', 'tropcol_o3', 'tropcol_so2']
+    blacklist = skipvar + [yvar]
+
+    if remove_outlier:
+        concentration_obs = all_data[yvar].values.reshape(-1, 1)
+        model_IF = IForest(contamination=0.05)  
+        model_IF.fit(concentration_obs)
+        anomalies = model_IF.predict(concentration_obs)
+        all_data = all_data[anomalies != 1]
+
+    xvar = [i for i in all_data.columns if i not in blacklist]
+
+    x = all_data[xvar]
+    y = all_data[yvar]
+
+    X_train, X_test, Y_train, Y_test = train_test_split(x, y, test_size=0.3, random_state=7)
+
+    baseline_model = xgb.XGBRegressor()
+    baseline_model.fit(X_train, Y_train)
+
+    baseline_model_score = baseline_model.score(X_test, Y_test)
+    eval_set = [(X_train, Y_train), (X_test,Y_test)]
+    
+    if model_tuning:
+        param_grid = {
+            'learning_rate': [0.01, 0.1, 0.3],
+            'max_depth': [3, 10, 15],
+            'n_estimators': [50, 500, 1000]
+        }
+
+        grid_search = GridSearchCV(estimator=baseline_model, param_grid=param_grid, cv=5, scoring='neg_mean_squared_error')
+        grid_search.fit(X_train, Y_train)
+        if isite._silent:
+            print("Best parameters found: ", grid_search.best_params_)
+            print("Lowest RMSE found: ", np.sqrt(np.abs(grid_search.best_score_)))
+        tuned_model = xgb.XGBRegressor(**grid_search.best_params_)
+        tuned_model.fit(X_train, Y_train)
+        tuned_model_score = tuned_model.score(X_test, Y_test)
+        
+        if tuned_model_score > baseline_model_score:
+            if isite._silent:
+                print("The tuned model is the best performer.")
+            selected_model = tuned_model
         else:
-            model = xgb.XGBRegressor(colsample_bytree = 0.3, learning_rate = 0.01, max_depth = 4, n_estimators = 2000)
+            if isite._silent:
+                print("The baseline model is the best performer.")
+            selected_model = baseline_model
+    
+    else:
+        selected_model = baseline_model
+    
+    selected_model.fit(X_train, Y_train, eval_set=eval_set, eval_metric='rmse', early_stopping_rounds=10, verbose=0)
+    Y_pred = selected_model.predict(X_test)
+    rmse = round(mean_squared_error(Y_test, Y_pred, squared=False),2)
+    r2 = round(r2_score(Y_test, Y_pred),2)
+    mae = round(mean_absolute_error(Y_test, Y_pred),2)
+    
+    log_if_condition((r2 < 0.5) , f'MODEL ERROR: MODEL RUNS POORLY IN THE LOCATION: R2: {r2} ; RMSE: {rmse} IN LOCATION: {location_name} SPECIES: {species.lower()}')
+    
+    ## Preparing the final dataframe with forecasts
+    start = start if start is not None else all_obs["time"].min()
+    end = end if end is not None else all_obs["time"].min()
+    model_data = isite._read_model(ilon = isite._lon, ilat = isite._lat, start = start,end = end, source = model_source, url = GEOS_CF )
+    model_data['time'] = [dt.datetime(i.year,i.month,i.day,i.hour,0,0) for i in model_data['time']]
+    model_data['localised'] = selected_model.predict(model_data[x.columns])
+    observation = isite._obs[['time','value']].copy()
+    observation['time'] = [dt.datetime(i.year,i.month,i.day,i.hour,0,0) for i in observation['time']]
 
+    HAQAST_data_product = merge_dataframes([model_data, observation], index_col = 'time', resample = '1h')
+    export_to_gesdisc(HAQAST_DATA = HAQAST_data_product,location_name = location_name, species = species, unit = unit, lat = isite._lat,lon = isite._lon)
+    merged_data = merge_dataframes([model_data, observation], index_col = 'time', resample = resample)
 
-
-        #Train
-
-        prepared_model=model.fit(X_train, Y_train)
-
-        #Prediction DF
-
-        ypred = model.predict(all_data[x.columns])
-
-        #Metrics
-        score=prepared_model.score(X_test,Y_test)
-        Target_predicted=prepared_model.predict(X_test)
-        MSE=round(mean_squared_error(Y_test,Target_predicted), 2)
-        RMSE=round(mean_squared_error(Y_test,Target_predicted, squared=False) , 2)
-        MAE = round(mean_absolute_error(Y_test, Target_predicted) , 2)
-        r2=round(r2_score(Y_test,Target_predicted) , 2)
-
-        training_acuracy = round(model.score(X_train, Y_train), 2)
-        testing_acuracy = round(model.score(X_test, Y_test), 2)
-
-        #Plotting
-
-        df = all_data[['time','value']].copy()
-        df['prediction'] = ypred
-        df['residuals'] = df['prediction'] - df['value']
-
-        model_no2 = self._mod[['time','no2']].copy()
-        model_no2['time'] = [dt.datetime(i.year,i.month,i.day,i.hour,0,0) for i in model_no2['time']]
-
-        dfm = df.merge(model_no2)
-        dfm = dfm.set_index('time').resample('1D').mean().reset_index()
-
-        metrics =  ' Validation score: ' + str(testing_acuracy)+' | RMSE: '+ str(RMSE) + '| MAE: '+ str(MAE) +'| r2:' + str(r2)
-
-
-        fig = self.plot(dfm,y=['value','prediction'])
-
-
-        fig.add_annotation(dict(font=dict(color='black',size=11),
-                                            x=0,
-                                            y=-0.15,
-                                            showarrow=False,
-                                            text=metrics,
-                                            textangle=0,
-                                            xanchor='left',
-                                            xref="paper",
-                                            yref="paper"))
-
-        self._bst = model
-        self._x = x
-        self._xcolumns = x.columns
-        self.Xtrain = X_train
-        self.Xtest = X_test
-        self.ytrain = Y_train
-        self.ytest = Y_test
-        
-        
-        if output == "plot":
-            return fig
-        if output == "model":
-            return model
-        if output == "dataframe":
-            return dfm
-        if output == "decomposition":
-            decompose = seasonal_decompose(ypred, model='additive')
-            decompose.plot()
-            pyplot.show()
-        if output == "confidence_intervals_plot":
-            return self.ConfidenceIntervals(OUTPUT = "PLOT")
-        if output == "confidence_intervals_dataframe":
-            return self.ConfidenceIntervals(OUTPUT = "dataframe")
-
+    location_plot(dataframe = merged_data, location_name = location_name, title = f'{location_name} ( {species} ) ({isite._lat}, {isite._lon})', species = species, unit = unit, model_info = f"(r2:{r2} | rmse:{rmse})") 
+    if isite._silent:
+        print(f"forecasts generated for {fvar}")
+    return merged_data
 
             
 ## General Functions
-
-
-
 def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0,**kwargs):
         """ Helper routine to read OpenAQ via API (from given url) and create a dataframe of the data
         
@@ -1197,7 +1372,124 @@ def read_openaq(url,reference_grade_only=True,silent=False,remove_outlier=0,**kw
             return None
 
 
+        
+def read_local_obs(obs_url = None, time_col ="Time", date_format = "%m/%d/%Y %H:%M:%S", value_collum="value", lat_col= None , lon_col= None,  species = None, silent=False, remove_outlier=0, rename_column =None, unit = None , lat = None, lon = None, **kwargs):
 
+    col_name = rename_column if rename_column else 'value'
+    
+    allobs = pd.read_csv(obs_url)
+    allobs = allobs.loc[(allobs[value_collum]>=0.0)&(~np.isnan(allobs[value_collum]))].copy()
+    
+    allobs['time'] = [dt.datetime.strptime(i, date_format) for i in allobs[time_col]]
+    
+    #allobs[col_name] = allobs[value_collum]
+    
+    conversion_unit = 'ppb' if species != 'pm25' else 'ugm3'
+    
+    allobs[col_name] = convert_pollutant(species, allobs[value_collum], unit, conversion_unit)
+    
+    allobs["lat"] = allobs[lat_col] if lat_col else lat
+    allobs["lon"] = allobs[lon_col] if lon_col else lon
+    location_name = obs_url.split('/')[-1].split('_')[0]
+    allobs["location"] = location_name
+    allobs = allobs[["time",col_name,"lat","lon","location"]]
+
+    if remove_outlier > 0:
+        std = allobs[species].std()
+        mn  = allobs[species].mean()
+        minobs = mn - remove_outlier*std
+        maxobs = mn + remove_outlier*std
+        norig = allobs.shape[0]
+        allobs = allobs.loc[(allobs[species]>=minobs)&(allobs[species]<=maxobs)].copy()
+    
+    return allobs
+
+
+
+def read_pandora(file_path = None ,csv_start_line = None, time_col = 0, date_format = "%Y%m%dT%H%M%S.%fZ", value_collum=56, lat= None , lon = None, species = "NO2", location_name = None, silent=False, **kwargs):
+
+    print(f"Reading observation from.. {file_path}")
+    
+    # Read the text file line by line
+    with open(file_path, 'r', encoding='ISO-8859-1') as file:
+        lines = file.readlines()
+
+
+        #file_contents = file.read()
+        #lat_col = re.search(lat_col_pattern, file_contents)
+        #long_col = re.search(long_col_pattern, file_contents)
+
+        for line_number, line in enumerate(lines):
+            if line.startswith("20"): 
+                csv_start_line = line_number
+                break
+
+
+    if csv_start_line is not None:
+        allobs = pd.DataFrame()
+
+
+        data = [line.strip().split() for line in lines[csv_start_line:]]
+        pandora_obs = pd.DataFrame(data)
+
+        pandora_obs.columns = range(1, len(pandora_obs.columns) + 1)
+        ##pandora_obs = pandora_obs[(pandora_obs[53] == 10) | (pandora_obs[53] == 11)]
+        
+        
+        
+        pandora_obs[value_collum] = pandora_obs[value_collum].astype(float)
+        #pandora_obs["quality_flag"] = pandora_obs[53].astype(int)
+        #pandora_obs["concentration_index"] = pandora_obs[68].astype(float)
+        
+        R = 8.314
+        no2_raw =  pandora_obs[value_collum].astype(float)  
+        temperature = pandora_obs[15].astype(float) 
+        pressure_mbar = pandora_obs[14].astype(float)  
+        fully_mixed_index = pandora_obs[58].astype(float)  
+        pressure = pressure_mbar * 100
+
+        pandora_obs['value'] = no2_raw
+        
+        ##selecting only fully mixed case from extrapolation to horizon 
+        pandora_obs = pandora_obs.loc[pandora_obs[58] == "2"]
+
+
+        pandora_obs = pandora_obs.loc[(pandora_obs[value_collum]>=0.0)&(~np.isnan(pandora_obs[value_collum]))].copy()
+
+        pandora_obs['time'] = [dt.datetime.strptime(i, date_format) for i in pandora_obs.iloc[:, 0]]
+
+        pandora_obs.set_index('time', inplace=True)
+        pandora_obs.to_csv(f"pandora/{location_name}_unsampled.csv")
+        pandora_obs = pandora_obs.resample("1H").mean()
+
+        pandora_obs.reset_index(inplace=True)
+        pandora_obs['lat'] = lat
+        pandora_obs['lon'] = lon
+        pandora_obs['location'] = location_name
+        #pandora_obs['fully_mixed_index'] = fully_mixed_index
+        
+        return pandora_obs[["time","value","lat","lon","location"]]
+    else:
+        print("CSV data not found in the file.")
+
+def convert_no2_to_ppbv(no2_concentration_mol_m3 = None, volume_m3= 1.0, pressure_pa = None, elevation_m = None, temperature_k = None):
+
+    ideal_gas_constant = 8.314  # J/(mol·K)
+
+
+    no2_concentration_mol_cm3 = no2_concentration_mol_m3 * 1.0e-6
+
+
+    moles_no2 = no2_concentration_mol_cm3 * volume_m3
+    
+    pressure_conv = pressure_pa * 100
+    pressure_at_sea_level = pressure_conv * (1 - 0.0065 * elevation_m / (temperature_k + 0.0065 * elevation_m + 273.15)) ** 5.2561
+    moles_no2_adjusted = moles_no2 * pressure_at_sea_level / pressure_conv
+
+    # Convert adjusted concentration to ppbv
+    ppbv = (moles_no2_adjusted / volume_m3) * 1.0e9  # 1 ppbv = 1e9 molecules/m³
+
+    return ppbv
 
 def nsites_by_threshold(df,maxconc=50):
     '''Write number of sites with mean concentration above concentration threshold for concentrations ranging from 0 to maxconc ppbv'''
@@ -1243,6 +1535,7 @@ def plot_deviation_orig(siteRatios,title=None,minval=-30.,maxval=30.):
 
 
 def merge_intervales_with_model(self, confidenceIntervals):
+    '''Merge intervals with actual model predictions'''
     all_intervals = confidenceIntervals[["time","value","upper","lower","mid"]].copy()
     all_intervals = all_intervals.resample("1H").mean()
     all_intervals = all_intervals.reset_index()
@@ -1257,3 +1550,234 @@ def merge_intervales_with_model(self, confidenceIntervals):
     all_intervals = all_intervals.merge(xg_preditions)
     all_intervals = all_intervals.set_index("time").resample("1D").mean()
     return all_intervals
+
+
+
+def location_plot(dataframe = None, location_name = None, title = "Location x (lat, lon)", species = 'pm25', unit = None, model_info=""):
+    '''General ploting routine for all the forecats with difference observation sources'''
+    location_name_cor = re.sub('[^0-9a-zA-Z]+', ' ', location_name)
+    dataframe['time'] = pd.to_datetime(dataframe['time'])
+    final_df = dataframe
+    fvar = 'pm25_rh35_gcc' if species == 'pm25' else species
+    species_name = species
+    fig = go.Figure()
+    x = final_df['time']
+    
+    if unit == 'ugm3':
+        unit_display = 'ug/m3'
+    else:
+        unit_display = unit
+
+    if 'value' in final_df.columns:
+        fig.add_trace(go.Scatter(x=x, y=final_df['value'], name='Observation', line=dict(color='rgba(255, 0, 0, 0.8)', width=4)))
+    
+    if 'localised' in final_df.columns:
+        fig.add_trace(go.Scatter(x=x, y=final_df['localised'], name='Corrected'+model_info, line=dict(color='rgba(59, 59, 59, 0.8)', width=4)))
+        
+    if 'openaq' in final_df.columns:
+        fig.add_trace(go.Scatter(x=x, y=final_df['openaq'], name='openaq', line=dict(color='green', width=4)))
+        
+    if fvar in final_df.columns:
+        fig.add_trace(go.Scatter(x=x, y=final_df[fvar], name='Uncorrected', line=dict(color='rgba(142, 142, 142, 0.8)', width=4)))
+
+    fig.update_layout(
+        title=str(title),
+        xaxis_title='Date',
+        yaxis_title=str(species_name)+' ('+unit_display+')',
+        legend=dict(
+            orientation='h',
+            yanchor='top',
+            y=1.1,
+            xanchor='center',
+            x=0.5
+        )
+    ) 
+    
+    if not os.path.exists('plots'):
+        os.makedirs('plots')
+    fig.write_image(f"plots/{location_name_cor}_{species_name}.png")
+    return fig
+
+
+def merge_dataframes(df_list, index_col, resample = None ):
+    '''merge data routine'''
+    merged_df = df_list[0]
+    for df in df_list[1:]:
+        merged_df = pd.merge(merged_df, df, on=index_col, how='outer')   
+    if resample:
+        merged_df = merged_df.resample(resample, on=index_col).mean().reset_index()
+    return merged_df
+
+
+def export_to_gesdisc(HAQAST_DATA = None,location_name = None, species = None, unit = None, start=dt.datetime.today() - relativedelta(years=1), end=dt.datetime.today() ,lat = None,lon = None ,IdentifierProductDOI = None):
+    '''Convert forecasts with GES DISC Formatting'''
+    
+    current_datetime = dt.datetime.now()
+    current_time_GMT = dt.datetime.utcnow()
+    current_time_GMT = time.mktime(current_time_GMT.timetuple())
+    HAQAST_DATA['time'] = pd.to_datetime(HAQAST_DATA['time'])
+    fvar = 'pm25_rh35_gcc' if species=='pm25' else species
+    
+    first_timestamp = HAQAST_DATA['time'].min()
+    last_timestamp = HAQAST_DATA['time'].max()
+    min_year = HAQAST_DATA['time'].dt.year.min()
+    max_year = HAQAST_DATA['time'].dt.year.max()
+    location_name = location_name
+    location_name = location_name.replace(" ", "_")
+    lon=lon
+    lat=lat
+    parameter = species
+    unit = unit
+    VersionID = "1.0.0"
+    Format = "ASCII" 
+    RangeBeginningDate = first_timestamp.strftime('%Y-%m-%d')
+    RangeBeginningTime = first_timestamp.strftime('%H:%M:%S')
+    RangeEndingDate = last_timestamp.strftime('%Y-%m-%d') 
+    RangeEndingTime = last_timestamp.strftime('%H:%M:%S')
+    
+     
+    ProductionDateTime = current_datetime.strftime('%Y-%m-%dT%H:%M:%S.%fZ') 
+    ProcessingLevel = "Level 4"
+    Conventions = "ASCII" 
+    DataSetQuality = "A description of the bias-correction methodology and corresponding uncertainty estimates are provided in Keller et al. 2021 (https://doi.org/10.5194/acp-21-3555-2021)" 
+    title = "HAQAST localized ground-level concentration of nitrogen dioxide (NO2): model-observation fused,1-Hourly,Time-Averaged,Ground-Level (2m)"
+    history = f"Original file generated: {current_time_GMT}" 
+    source = "GEOS-CF v1.0" 
+    institution = "NASA Global Modeling and Assimilation Office"
+    references = "http://gmao.gsfc.nasa.gov" 
+    TemporalRange = f"{RangeBeginningDate} -> {RangeEndingDate}"
+    filename = f'HAQAST_localized_concentration_{parameter}.L4.V1.{location_name}.{min_year}-{max_year}.txt'
+    StationLatitude = lat
+    StationLongitude = lon   
+    Contact = "http://gmao.gsfc.nasa.gov" 
+    SouthernmostLatitude, NorthernmostLatitude, WesternmostLongitude, EasternmostLongitude = calculate_extremes([(lat, lon)])
+    SpatialCoverage = "point-source"
+    
+    if species == 'no2' :
+        IdentifierProductDOI = "10.5067/R3MOD87DBR3E"
+        shortName = "HAQLOCNO2"
+    elif species == 'pm25':
+        IdentifierProductDOI = "10.5067/MGBETJN7JJCS"
+        shortName = "HAQLOCPM25"
+    elif species == 'o3':
+        IdentifierProductDOI = "10.5067/11JBPNUERB7L"
+        shortName = "HAQLOCO3"
+    else:
+        IdentifierProductDOI = "10.5067/R3MOD87DBR3E"
+        shortName = "HAQLOCNO2" 
+
+    HAQAST_DATA = HAQAST_DATA.rename(columns={'time': 'ISO8601', 'localised': 'localized_model_value', 
+                            fvar: 'uncorrected_model_value'})
+    HAQAST_DATA['ISO8601'] = pd.to_datetime(HAQAST_DATA['ISO8601']).dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    HAQAST_DATA['location'] = location_name
+    HAQAST_DATA['lat'] = lat
+    HAQAST_DATA['lon'] = lon
+    HAQAST_DATA['parameter'] = parameter
+    HAQAST_DATA['unit'] = unit
+
+
+
+    HAQAST_DATA = HAQAST_DATA[["ISO8601","location","lat","lon","parameter","unit","localized_model_value","uncorrected_model_value"]]
+
+    #prepare HAQAST Metadata
+    HAQAST_DATA['ISO8601'] = pd.to_datetime(HAQAST_DATA['ISO8601'], errors='coerce')
+
+
+    folder_path = 'HAQAST_localized_concentration_L4'
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    file_path = os.path.join(folder_path, filename)
+
+
+    with open(file_path, "a") as file:
+            file.truncate(0)
+            file.write("#######################################################################\n")
+            file.write(f"## GranuleID = \"{filename}\" \n")
+            file.write(f"## ShortName = \"{shortName} \n")
+            file.write(f"## DOI = \"{IdentifierProductDOI}S \n")
+            file.write(f"## LongName = \"HAQAST localized ground-level concentration of {parameter}: model-observation fused,1-Hourly,Time-Averaged,Ground-Level (2m)\" \n")
+            file.write(f"## VersionID = \"{VersionID}\" \n")
+            file.write(f"## Format = \"{Format}\" \n")
+            file.write(f"## VersionID = \"{VersionID}\" \n")
+            file.write(f"## RangeBeginningDate = \"{RangeBeginningDate}\" \n")
+            file.write(f"## RangeBeginningTime = \"{RangeBeginningTime}\" \n")
+            file.write(f"## RangeEndingDate = \"{RangeEndingDate}\" \n")
+            file.write(f"## RangeEndingTime = \"{RangeEndingTime}\" \n")
+            file.write(f"## IdentifierProductDOI = \"{IdentifierProductDOI}\" \n")
+            file.write(f"## ProductionDateTime = \"{ProductionDateTime}\" \n")
+            file.write(f"## ProcessingLevel = \"{ProcessingLevel}\" \n")
+            file.write(f"## Conventions = \"{Conventions}\" \n")
+            file.write(f"## DataSetQuality = \"{DataSetQuality}\" \n")
+            file.write(f"## Title = \"{title}\" \n")
+            file.write(f"## History = \"{history}\" \n")
+            file.write(f"## Source = \"{source}\" \n")
+            file.write(f"## Institution = \"{institution}\" \n")
+            file.write(f"## references = \"{references}\" \n")
+            file.write(f"## TemporalRange = \"{TemporalRange}\" \n")
+            file.write(f"## Filename = \"{filename}\" \n")
+            file.write(f"## StationLatitude = \"{StationLatitude}\" \n")
+            file.write(f"## StationLongitude = \"{StationLongitude}\" \n")
+            file.write(f"## Contact = \"{Contact}\" \n")
+            file.write(f"## SouthernmostLatitude = \"{SouthernmostLatitude}\" \n")
+            file.write(f"## NorthernmostLatitude = \"{NorthernmostLatitude}\" \n")
+            file.write(f"## WesternmostLongitude = \"{WesternmostLongitude}\" \n")
+            file.write(f"## EasternmostLongitude = \"{EasternmostLongitude}\" \n")
+            file.write(f"## SpatialCoverage = \"{SpatialCoverage}\" \n")
+            file.write("#######################################################################\n")  
+            HAQAST_DATA.to_csv(file, index=False)
+            print("dataproduct is saved successfully ")
+            
+            
+            
+def get_site_information(site_id):
+    '''Collect location information from OpenAQ'''
+    url = "https://api.openaq.org/v2/locations/"+str(site_id)+"?limit=100&page=1&offset=0&sort=desc&radius=1000&order_by=lastUpdated&dumpRaw=false"
+
+    headers = {"accept": "application/json"}
+
+    response = requests.get(url, headers=headers).json()
+    
+    return (response["results"][0]["name"])
+            
+
+def calculate_extremes(coordinates):
+    '''Calculate coordinate extremes based on lat, lon of the location'''
+    southernmost_lat = min(coordinates, key=lambda x: x[0])[0]
+    northernmost_lat = max(coordinates, key=lambda x: x[0])[0]
+    westernmost_long = min(coordinates, key=lambda x: x[1])[1]
+    easternmost_long = max(coordinates, key=lambda x: x[1])[1]
+
+    return southernmost_lat, northernmost_lat, westernmost_long, easternmost_long
+
+
+def convert_pollutant(species, value, current_unit, conversion_unit):
+    '''Unit conversions routine'''
+    conversion_factors = {
+        "no2": {"molm3": 1.88, "ppb": 1.88, "ugm3": 1 / 1.88, "ppbv": 1e9 / 1.88},
+        "o3": {"ppb": 1.97, "ugm3": 1 / 1.97, "ppbv": 1e9 / 1.97},
+        "pm25": {"ppb": 0.0409, "ugm3": 1 / 0.0409}, 
+    }
+
+    try:
+        factor = conversion_factors[species][conversion_unit]
+    except KeyError:
+        return None  
+
+    if current_unit == conversion_unit:
+        return value  
+    print(f"conveting..{current_unit} to {conversion_unit} with factor * {factor}" )
+    return value * factor  
+
+
+            
+def log_if_condition(condition, message, log_file="logs/locations_log.txt"):
+    '''Log management routine'''
+    try:
+        if condition:
+            current_time = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+            with open(log_file, "a") as log:
+                log.write(f"{current_time} - {message}\n")
+    except Exception as e:
+        print(f"Error occurred while logging: {e}")
