@@ -5,11 +5,12 @@
 This library focuses on generating localized forecasts for select locations based on NASA GMAO's GEOS Composition Forecasting (GEOS-CF). Some of the location data are provided by OpenAQ. Using this library, you can train and load models based on you location data online and measure the uncertainty of the forecast based on the data provided.
 
 ### Documentation
-Link to Documentation: https://geos-cf-localized-forecasts.readthedocs.io/en/latest/
+(TBD) Link to Documentation: https://geos-cf-localized-forecasts.readthedocs.io/en/latest/
 
 ### Aim and Scope
-This library focuses on generating localized forecasts for select locations based on NASA GMAO's GEOS Composition Forecasting (GEOS-CF). Some of the location data are provided by OpenAQ. 
-Using this library, you can train and load models based on you location data online and measure the uncertainty of the forecast based on the data provided.
+
+A forecasting library, equipped with  features to provide localized air quality forecasts. By integrating NASA GMAO's GEOS Composition Forecasting (GEOS-CF) data with location information from OpenAQ and location observation as availabe. One of the key features is the ability to dynamically train models online, ensuring that forecasts remain current and reflective of evolving atmospheric conditions. This adaptive approach, coupled with robust uncertainty measurement techniques, enables users to assess the reliability of predictions and make informed decisions.
+
 
 ### Core Features
 * Researchers and ML practitioners can conveniently use an existing model instead of training their location-based model each time.
@@ -22,12 +23,40 @@ Using this library, you can train and load models based on you location data onl
 ### Getting Started Example
 
 ```python
-import MLpred.mlpred as mlpred
-import MLpred.funcs
+import sys
+sys.path.insert(1,'MLpred')
+from MLpred import mlpred
+from MLpred import funcs
+import datetime as dt
 ```
 
 
 ```python
-# train the model on the cite data and generate a forecast plot based on GEOS-CF and OpenAQ data
-site_init = mlpred.ObsSite(OPENAQID,model_source='s3',species= "SPECIES (NO2, PM25, O3)")
-forecasts = site_init.get_location_forecasts(dt.datetime(START_DATE),end_date=dt.datetime(END_DATE))
+# Set location parameters
+site_settings = {'l_name': f'ACO Mexico City', 
+             'species': 'no2', 
+             'silent': True, 
+             'lat': None, 
+             'lon': None, 
+             'model_src': 'local',
+             'obs_src': 'local',
+             'openaq_id': None,
+             'model_tuning' : False,
+             'model_url': None,
+             'obs_url': 'link to model if availabe otherwise None',
+             'resample' : '5D',
+             'unit' : 'ppb',
+             'interpolation': True,
+             'remove_outlier': False,
+             'start' : None,   
+             'end': dt.datetime.today()
+            }
+# Set observation file parameters
+obs_settings = {'time_col': 'date', 
+                 'date_format': '%Y-%m-%d %H:%M:%S', 
+                 'obs_val_col': 'valor', 
+                 'lat_col': 'latitud', 
+                 'lon_col': 'longitud',
+                }
+
+all_frcsts = mlpred.get_localised_forecast(site_settings = site_settings, obs_settings=obs_settings)
