@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 # ! /usr/bin/env python
 """ 
@@ -6,6 +5,7 @@ mlpred.py
 
 This file handles localized forecasts, based on GMAO's GEOS CF and OpenAQ data
 .. codeauthor:: Christoph R Keller <christoph.a.keller@nasa.gov>
+.. contributor:: Noussair Lazrak <noussair.lazrak@nyu.edu>
 """
 
 # Import python native libs
@@ -34,20 +34,17 @@ import shap
 from sklearn.base import BaseEstimator
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import RandomizedSearchCV
-
 from plotly.offline import iplot, plot, init_notebook_mode
 init_notebook_mode(connected=True)
 import matplotlib.pyplot as plt
-
 import logging
 from sklearn.model_selection import learning_curve, GridSearchCV
-
 import lightgbm as lgb
 from pyod.models.iforest import IForest
 import warnings
 warnings.filterwarnings('ignore')
 
-#ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf.met_tavg_1hr_g1440x721_x1.zarr","geos-cf/zarr/geos-cf.chm_tavg_1hr_g1440x721_v1.zarr"]
+ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf.met_tavg_1hr_g1440x721_x1.zarr","geos-cf/zarr/geos-cf.chm_tavg_1hr_g1440x721_v1.zarr"]
 ZARR_TEMPLATE = ["geos-cf/zarr/geos-cf-rpl.zarr"]
 S3_TEMPLATE = "s3://dh-eis-fire-usw2-shared/geos-cf-rpl.zarr"
 S3_FORECASTS_TEMPLATE = "s3://dh-eis-fire-usw2-shared/geos-cf-fcst-latest.zarr"
@@ -62,11 +59,6 @@ DEFAULT_GASES = ['co', 'hcho', 'no','no2', 'noy', 'o3']
 
 PPB2UGM3 = {'no2':1.88,'o3':1.97}
 VVtoPPBV = 1.0e9
-
-
-
-## converting mol m2 to geos-cf no2 total:  totcol * 6.022e23 / 1e4 / 1e15
-
 
 class ObsSiteList:
     def __init__(self,ifile=None):
@@ -725,7 +717,6 @@ class ObsSite:
             site longitude
         ilat:
             site latitude 
-        
         start: datetime
             The start date of training data set (GEOS-CF DATA)
         
@@ -783,10 +774,7 @@ class ObsSite:
                 ids = xr.open_zarr(ipath).sel(lon=ilon, lat=ilat, lev=1, method='nearest').sel(time=slice(start, end)).load().to_dataframe().reset_index()
                 if not ids.empty:
                     dfs.append(ids) 
-
-
-        
-                   
+           
         if source=='local':
             url = kwargs.get('url')
             if not self._silent:
@@ -899,8 +887,6 @@ class ObsSite:
                 print('Warning: no coordinates in dataset')
         return outobs
     
-    
-        
     def explain_model(model,X,plot,feature = False):
         """ explain model via Shap values
         
@@ -1119,8 +1105,6 @@ class ObsSite:
 
    
         predictions = pd.DataFrame(self.ytest)
-        
-       
         predictions['lower'] = lower_model.predict(self.Xtest)
         predictions['mid'] = mid_model.predict(self.Xtest)
         predictions['upper'] = upper_model.predict(self.Xtest)
@@ -1229,7 +1213,6 @@ def get_localised_forecast(**kwargs):
     isite.read_obs(source = observation_source, url = OBS_URL, time_col = time_col, date_format = date_format, value_collum=obs_val_col, lat_col= lat_col , lon_col= lon_col,  species = species , lat = lat, lon = lon, unit=unit) 
 
     all_obs = isite._obs
-    
     isite.read_mod(source = model_source, url = GEOS_CF)
     all_data = isite._merge(interpolation = interpolation)
     all_data.dropna()
@@ -1237,7 +1220,7 @@ def get_localised_forecast(**kwargs):
     yvar='value'
     fvar = 'pm25_rh35_gcc' if isite._species=='pm25' else isite._species.lower()
     
-    ## Unusual deiffierence between OBS and Model 
+    ## Unusual difference between OBS and Model
     difference = all_data[fvar].mean()/all_data[yvar].mean()    
     log_if_condition((difference > 2) , f'UNIT ERROR: GEOS CF IS HIGHER BY: {difference} IN LOCATION: {location_name} SPECIES: {species.lower()}')                    
     
@@ -1413,11 +1396,6 @@ def read_pandora(file_path = None ,csv_start_line = None, time_col = 0, date_for
     # Read the text file line by line
     with open(file_path, 'r', encoding='ISO-8859-1') as file:
         lines = file.readlines()
-
-
-        #file_contents = file.read()
-        #lat_col = re.search(lat_col_pattern, file_contents)
-        #long_col = re.search(long_col_pattern, file_contents)
 
         for line_number, line in enumerate(lines):
             if line.startswith("20"): 
