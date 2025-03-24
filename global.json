@@ -1,4 +1,992 @@
 {
+    "031AZE010001": {
+        "location_name": "Baku",
+        "lat": 49.842945,
+        "lon": 40.386993,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Baku.json",
+                "historical": "Baku.json"
+            }
+        }
+    },
+    "032BAA010002": {
+        "location_name": "Buenos Aires",
+        "lat": -58.4188,
+        "lon": -34.5766,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Buenos Aires.json",
+                "historical": "Buenos Aires.json"
+            }
+        }
+    },
+    "051YER010001": {
+        "location_name": "Yerevan",
+        "lat": 44.48171,
+        "lon": 40.16515,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Yerevan.json",
+                "historical": "Yerevan.json"
+            }
+        }
+    },
+    "070BH2010001": {
+        "location_name": "Banja Luka",
+        "lat": 17.185556,
+        "lon": 44.7725,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Banja Luka.json",
+                "historical": "Banja Luka.json"
+            }
+        }
+    },
+    "076BR1010001": {
+        "location_name": "Sao Paulo",
+        "lat": -46.69656,
+        "lon": -23.629158,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Sao Paulo.json",
+                "historical": "Sao Paulo.json"
+            }
+        }
+    },
+    "084BZ1010001": {
+        "location_name": "Belmopan",
+        "lat": -88.77387,
+        "lon": 17.256124,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Belmopan.json",
+                "historical": "Belmopan.json"
+            }
+        }
+    },
+    "104MMR010001": {
+        "location_name": "Rangoon",
+        "lat": 96.1445,
+        "lon": 16.8256,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Rangoon.json",
+                "historical": "Rangoon.json"
+            }
+        }
+    },
+    "180COG010001": {
+        "location_name": "Kinshasa",
+        "lat": 15.313658,
+        "lon": -4.300578,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Kinshasa.json",
+                "historical": "Kinshasa.json"
+            }
+        }
+    },
+    "188CRI010001": {
+        "location_name": "San Jose",
+        "lat": -84.142876,
+        "lon": 9.949488,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "San Jose.json",
+                "historical": "San Jose.json"
+            }
+        }
+    },
+    "266GAB010001": {
+        "location_name": "Libreville",
+        "lat": 9.44436,
+        "lon": 0.3902,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Libreville.json",
+                "historical": "Libreville.json"
+            }
+        }
+    },
+    "288GH1010001": {
+        "location_name": "Accra",
+        "lat": -0.170724,
+        "lon": 5.580642,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Accra.json",
+                "historical": "Accra.json"
+            }
+        }
+    },
+    "320GT1010001": {
+        "location_name": "Guatemala City",
+        "lat": -90.48391,
+        "lon": 14.61858,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Guatemala City.json",
+                "historical": "Guatemala City.json"
+            },
+            "pm25": {
+                "forecasts": "Guatemala City.json",
+                "historical": "Guatemala City.json"
+            },
+            "pm10 - principal": {
+                "forecasts": "Guatemala City.json",
+                "historical": "Guatemala City.json"
+            }
+        }
+    },
+    "324GN1010001": {
+        "location_name": "Conakry",
+        "lat": -13.6364,
+        "lon": 9.5951,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Conakry.json",
+                "historical": "Conakry.json"
+            }
+        }
+    },
+    "368IRQ010001": {
+        "location_name": "Baghdad",
+        "lat": 44.3615,
+        "lon": 33.3128,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Baghdad.json",
+                "historical": "Baghdad.json"
+            }
+        }
+    },
+    "384CI1010001": {
+        "location_name": "Abidjan",
+        "lat": -4.0083,
+        "lon": 5.36,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Abidjan.json",
+                "historical": "Abidjan.json"
+            }
+        }
+    },
+    "398KZ1010001": {
+        "location_name": "Almaty",
+        "lat": 76.93118,
+        "lon": 43.252853,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Almaty.json",
+                "historical": "Almaty.json"
+            }
+        }
+    },
+    "400JOR010001": {
+        "location_name": "Amman",
+        "lat": 35.8805,
+        "lon": 31.94502,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Amman.json",
+                "historical": "Amman.json"
+            },
+            "pm25": {
+                "forecasts": "Amman.json",
+                "historical": "Amman.json"
+            }
+        }
+    },
+    "417BI1010001": {
+        "location_name": "Bishkek",
+        "lat": 74.58384,
+        "lon": 42.827625,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Bishkek.json",
+                "historical": "Bishkek.json"
+            }
+        }
+    },
+    "418LAO010001": {
+        "location_name": "Vientiane",
+        "lat": 102.64,
+        "lon": 17.896122,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Vientiane.json",
+                "historical": "Vientiane.json"
+            }
+        }
+    },
+    "450MAD010001": {
+        "location_name": "Antananarivo",
+        "lat": 47.53751,
+        "lon": -18.90848,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Antananarivo.json",
+                "historical": "Antananarivo.json"
+            }
+        }
+    },
+    "458MY1010001": {
+        "location_name": "Kuala Lumpur",
+        "lat": 101.72145,
+        "lon": 3.15675,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Kuala Lumpur.json",
+                "historical": "Kuala Lumpur.json"
+            }
+        }
+    },
+    "466ML1010001": {
+        "location_name": "Bamako",
+        "lat": -8.036911,
+        "lon": 12.632524,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Bamako.json",
+                "historical": "Bamako.json"
+            }
+        }
+    },
+    "484MEX010001": {
+        "location_name": "Tijuana",
+        "lat": -116.95249,
+        "lon": 32.523365,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Tijuana.json",
+                "historical": "Tijuana.json"
+            }
+        }
+    },
+    "498MLD010001": {
+        "location_name": "Chisinau",
+        "lat": 28.81938,
+        "lon": 47.02156,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Chisinau.json",
+                "historical": "Chisinau.json"
+            }
+        }
+    },
+    "508MAP010001": {
+        "location_name": "Maputo",
+        "lat": 32.62835,
+        "lon": -25.90382,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Maputo.json",
+                "historical": "Maputo.json"
+            },
+            "pm25": {
+                "forecasts": "Maputo.json",
+                "historical": "Maputo.json"
+            }
+        }
+    },
+    "566NI1010001": {
+        "location_name": "Abuja",
+        "lat": 7.477374,
+        "lon": 9.041648,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Abuja.json",
+                "historical": "Abuja.json"
+            }
+        }
+    },
+    "566NI2010001": {
+        "location_name": "Lagos",
+        "lat": 3.406815,
+        "lon": 6.440483,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Lagos.json",
+                "historical": "Lagos.json"
+            }
+        }
+    },
+    "586PK1010001": {
+        "location_name": "Islamabad",
+        "lat": 73.11602,
+        "lon": 33.725613,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Islamabad.json",
+                "historical": "Islamabad.json"
+            }
+        }
+    },
+    "586PK2010001": {
+        "location_name": "Karachi",
+        "lat": 67.0091,
+        "lon": 24.8415,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Karachi.json",
+                "historical": "Karachi.json"
+            }
+        }
+    },
+    "586PK3010003": {
+        "location_name": "Lahore",
+        "lat": 74.33589,
+        "lon": 31.560078,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Lahore.json",
+                "historical": "Lahore.json"
+            }
+        }
+    },
+    "586PK4010001": {
+        "location_name": "Peshawar",
+        "lat": 71.53775,
+        "lon": 34.00585,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Peshawar.json",
+                "historical": "Peshawar.json"
+            }
+        }
+    },
+    "600PAR010001": {
+        "location_name": "Asuncion",
+        "lat": -57.60395,
+        "lon": -25.293535,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Asuncion.json",
+                "historical": "Asuncion.json"
+            }
+        }
+    },
+    "608PH1010001": {
+        "location_name": "Manila",
+        "lat": 120.9778,
+        "lon": 14.57711,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Manila.json",
+                "historical": "Manila.json"
+            }
+        }
+    },
+    "634QA1010001": {
+        "location_name": "Doha",
+        "lat": 51.22953,
+        "lon": 25.3337,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Doha.json",
+                "historical": "Doha.json"
+            },
+            "pm25": {
+                "forecasts": "Doha.json",
+                "historical": "Doha.json"
+            }
+        }
+    },
+    "646KYI010001": {
+        "location_name": "Kigali",
+        "lat": 30.077951,
+        "lon": -1.936231,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Kigali.json",
+                "historical": "Kigali.json"
+            }
+        }
+    },
+    "646RWA010001": {
+        "location_name": "Kigali",
+        "lat": 30.07795,
+        "lon": -1.93623,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Kigali.json",
+                "historical": "Kigali.json"
+            }
+        }
+    },
+    "682RIY010001": {
+        "location_name": "Riyadh",
+        "lat": 46.62074,
+        "lon": 24.68122,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Riyadh.json",
+                "historical": "Riyadh.json"
+            }
+        }
+    },
+    "682SAU010001": {
+        "location_name": "Riyadh",
+        "lat": 46.6753,
+        "lon": 24.7136,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Riyadh.json",
+                "historical": "Riyadh.json"
+            }
+        }
+    },
+    "686SEN010001": {
+        "location_name": "Dakar",
+        "lat": -17.526484,
+        "lon": 14.744791,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Dakar.json",
+                "historical": "Dakar.json"
+            }
+        }
+    },
+    "762DUS010001": {
+        "location_name": "Dushanbe",
+        "lat": 68.77592,
+        "lon": 38.55767,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Dushanbe.json",
+                "historical": "Dushanbe.json"
+            }
+        }
+    },
+    "768TOG010001": {
+        "location_name": "Lome",
+        "lat": 1.214166,
+        "lon": 6.185167,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Lome.json",
+                "historical": "Lome.json"
+            }
+        }
+    },
+    "795ABT010001": {
+        "location_name": "Ashgabat",
+        "lat": 58.3879,
+        "lon": 37.9415,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Ashgabat.json",
+                "historical": "Ashgabat.json"
+            }
+        }
+    },
+    "818EGY010001": {
+        "location_name": "Cairo",
+        "lat": 31.23289,
+        "lon": 30.04147,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Cairo.json",
+                "historical": "Cairo.json"
+            }
+        }
+    },
+    "854BFA010001": {
+        "location_name": "Ouagadougou",
+        "lat": -1.497184,
+        "lon": 12.304907,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Ouagadougou.json",
+                "historical": "Ouagadougou.json"
+            }
+        }
+    },
+    "AD1010001": {
+        "location_name": "Abu Dhabi",
+        "lat": 54.433872,
+        "lon": 24.42431,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Abu Dhabi.json",
+                "historical": "Abu Dhabi.json"
+            },
+            "pm25": {
+                "forecasts": "Abu Dhabi.json",
+                "historical": "Abu Dhabi.json"
+            }
+        }
+    },
+    "ALG010001": {
+        "location_name": "Algiers",
+        "lat": 3.039114,
+        "lon": 36.7558,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Algiers.json",
+                "historical": "Algiers.json"
+            }
+        }
+    },
+    "BG1010001": {
+        "location_name": "Bogota",
+        "lat": -74.09486,
+        "lon": 4.637735,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Bogota.json",
+                "historical": "Bogota.json"
+            }
+        }
+    },
+    "BIH010001": {
+        "location_name": "Sarajevo",
+        "lat": 18.398205,
+        "lon": 43.856667,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Sarajevo.json",
+                "historical": "Sarajevo.json"
+            }
+        }
+    },
+    "BJ1010001": {
+        "location_name": "Beijing",
+        "lat": 116.466255,
+        "lon": 39.953354,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Beijing.json",
+                "historical": "Beijing.json"
+            },
+            "pm25": {
+                "forecasts": "Beijing.json",
+                "historical": "Beijing.json"
+            }
+        }
+    },
+    "CMB010001": {
+        "location_name": "Colombo",
+        "lat": 79.87534,
+        "lon": 6.909445,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Colombo.json",
+                "historical": "Colombo.json"
+            }
+        }
+    },
+    "CUR010001": {
+        "location_name": "Curacao",
+        "lat": -68.99,
+        "lon": 12.1696,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Curacao.json",
+                "historical": "Curacao.json"
+            },
+            "pm25": {
+                "forecasts": "Curacao.json",
+                "historical": "Curacao.json"
+            }
+        }
+    },
+    "DB1010001": {
+        "location_name": "Dubai",
+        "lat": 55.309166,
+        "lon": 25.25848,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Dubai.json",
+                "historical": "Dubai.json"
+            },
+            "pm25": {
+                "forecasts": "Dubai.json",
+                "historical": "Dubai.json"
+            }
+        }
+    },
+    "DK1010001": {
+        "location_name": "Dhaka",
+        "lat": 90.424614,
+        "lon": 23.796373,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Dhaka.json",
+                "historical": "Dhaka.json"
+            },
+            "pm25": {
+                "forecasts": "Dhaka.json",
+                "historical": "Dhaka.json"
+            }
+        }
+    },
+    "DRN010000": {
+        "location_name": "Dhahran",
+        "lat": 50.147232,
+        "lon": 26.276861,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Dhahran.json",
+                "historical": "Dhahran.json"
+            }
+        }
+    },
+    "DS1010001": {
+        "location_name": "New Delhi",
+        "lat": 77.22445,
+        "lon": 28.63576,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "New Delhi.json",
+                "historical": "New Delhi.json"
+            }
+        }
+    },
+    "DS1010002": {
+        "location_name": "Chennai",
+        "lat": 80.27847,
+        "lon": 13.08784,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Chennai.json",
+                "historical": "Chennai.json"
+            }
+        }
+    },
+    "DS1010003": {
+        "location_name": "Kolkata",
+        "lat": 88.36304,
+        "lon": 22.56263,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Kolkata.json",
+                "historical": "Kolkata.json"
+            }
+        }
+    },
+    "DS1010004": {
+        "location_name": "Mumbai",
+        "lat": 72.88261,
+        "lon": 19.07283,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Mumbai.json",
+                "historical": "Mumbai.json"
+            }
+        }
+    },
+    "DS1010005": {
+        "location_name": "Hyderabad",
+        "lat": 78.45636,
+        "lon": 17.38405,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Hyderabad.json",
+                "historical": "Hyderabad.json"
+            }
+        }
+    },
+    "GZ1010001": {
+        "location_name": "Guangzhou",
+        "lat": 113.318085,
+        "lon": 23.116785,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Guangzhou.json",
+                "historical": "Guangzhou.json"
+            },
+            "pm25": {
+                "forecasts": "Guangzhou.json",
+                "historical": "Guangzhou.json"
+            }
+        }
+    },
+    "HC1010001": {
+        "location_name": "Ho Chi Minh City",
+        "lat": 106.700035,
+        "lon": 10.782773,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Ho Chi Minh City.json",
+                "historical": "Ho Chi Minh City.json"
+            }
+        }
+    },
+    "HN1010001": {
+        "location_name": "Hanoi",
+        "lat": 105.81881,
+        "lon": 21.021938,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Hanoi.json",
+                "historical": "Hanoi.json"
+            }
+        }
+    },
+    "JDA010001": {
+        "location_name": "Jeddah",
+        "lat": 39.17299,
+        "lon": 21.543486,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Jeddah.json",
+                "historical": "Jeddah.json"
+            }
+        }
+    },
+    "KC1010001": {
+        "location_name": "Kuwait City",
+        "lat": 48.04768,
+        "lon": 29.292316,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Kuwait City.json",
+                "historical": "Kuwait City.json"
+            }
+        }
+    },
+    "KP1010001": {
+        "location_name": "Kampala",
+        "lat": 32.591553,
+        "lon": 0.300225,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Kampala.json",
+                "historical": "Kampala.json"
+            }
+        }
+    },
+    "LM1010001": {
+        "location_name": "Lima",
+        "lat": -76.96888,
+        "lon": -12.099398,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Lima.json",
+                "historical": "Lima.json"
+            }
+        }
+    },
+    "MNA010001": {
+        "location_name": "Manama",
+        "lat": 50.57083,
+        "lon": 26.204697,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Manama.json",
+                "historical": "Manama.json"
+            },
+            "pm25": {
+                "forecasts": "Manama.json",
+                "historical": "Manama.json"
+            }
+        }
+    },
+    "PI1010001": {
+        "location_name": "Pristina",
+        "lat": 21.139954,
+        "lon": 42.65596,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Pristina.json",
+                "historical": "Pristina.json"
+            }
+        }
+    },
+    "SH1010001": {
+        "location_name": "Shanghai",
+        "lat": 121.44823,
+        "lon": 31.210684,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Shanghai.json",
+                "historical": "Shanghai.json"
+            }
+        }
+    },
+    "SY1010001": {
+        "location_name": "Shenyang",
+        "lat": 123.42443,
+        "lon": 41.78351,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Shenyang.json",
+                "historical": "Shenyang.json"
+            }
+        }
+    },
+    "UB1010001": {
+        "location_name": "Ulaanbaatar",
+        "lat": 106.92947,
+        "lon": 47.928387,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "Ulaanbaatar.json",
+                "historical": "Ulaanbaatar.json"
+            }
+        }
+    },
+    "UZB010001": {
+        "location_name": "Tashkent",
+        "lat": 69.2725,
+        "lon": 41.3672,
+        "status": "na",
+        "observation_source": "AirNow",
+        "precomputed_forecasts": {
+            "o3": {
+                "forecasts": "Tashkent.json",
+                "historical": "Tashkent.json"
+            },
+            "pm25": {
+                "forecasts": "Tashkent.json",
+                "historical": "Tashkent.json"
+            }
+        }
+    },
     "-102": {
         "location_name": "Agam",
         "lat": -0.2046,
