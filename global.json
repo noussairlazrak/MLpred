@@ -116624,5 +116624,694 @@
                 "historical": "GUANAJUATO_11.json"
             }
         }
+    },
+
+    "5I5_EQC": {
+        "location_name": "Ecuador_Quito_Cotocollao",
+        "lat": -0.1078,
+        "lon": -78.4972,
+        "status": "active",
+        "observation_source": "REMMAQ",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Cotocollao_pm25.json",
+                "historical": "forecast_latest_Ecuador_Quito_Cotocollao_pm25_historical.json"
+            },
+            "o3": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Cotocollao_o3.json",
+                "historical": "forecast_latest_Ecuador_Quito_Cotocollao_o3_historical.json"
+            },
+            "no2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Cotocollao_no2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Cotocollao_no2_historical.json"
+            },
+            "so2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Cotocollao_so2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Cotocollao_so2_historical.json"
+            },
+            "co": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Cotocollao_co.json",
+                "historical": "forecast_latest_Ecuador_Quito_Cotocollao_co_historical.json"
+            }
+        },
+        "obs_options": {
+            "pm25": {
+                "file": "REMMAQ_Quito_Cotocollao_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "pm25 (ugm-3)",
+                "l_name": "Ecuador_Quito_Cotocollao",
+                "lat": -0.1078,
+                "lon": -78.4972,
+                "coefficient_convert": 1.0,
+                "unit": "ugm-3"
+            },
+            "o3": {
+                "file": "REMMAQ_Quito_Cotocollao_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "o3 (ugm-3)",
+                "l_name": "Ecuador_Quito_Cotocollao",
+                "lat": -0.1078,
+                "lon": -78.4972,
+                "coefficient_convert": 0.5,
+                "unit": "ugm-3"
+            },
+            "no2": {
+                "file": "REMMAQ_Quito_Cotocollao_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "no2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Cotocollao",
+                "lat": -0.1078,
+                "lon": -78.4972,
+                "coefficient_convert": 0.532,
+                "unit": "ugm-3"
+            },
+            "so2": {
+                "file": "REMMAQ_Quito_Cotocollao_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "so2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Cotocollao",
+                "lat": -0.1078,
+                "lon": -78.4972,
+                "coefficient_convert": 0.382,
+                "unit": "ugm-3"
+            },
+            "co": {
+                "file": "REMMAQ_Quito_Cotocollao_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "co (mgm-3)",
+                "l_name": "Ecuador_Quito_Cotocollao",
+                "lat": -0.1078,
+                "lon": -78.4972,
+                "coefficient_convert": 873,
+                "unit": "mgm-3"
+            }
+        }
+    },
+    "IPX_EQE": {
+        "location_name": "Ecuador_Quito_ElCamal",
+        "lat": -0.25,
+        "lon": -78.51,
+        "status": "active",
+        "observation_source": "REMMAQ",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "forecast_latest_Ecuador_Quito_ElCamal_pm25.json",
+                "historical": "forecast_latest_Ecuador_Quito_ElCamal_pm25_historical.json"
+            },
+            "o3": {
+                "forecasts": "forecast_latest_Ecuador_Quito_ElCamal_o3.json",
+                "historical": "forecast_latest_Ecuador_Quito_ElCamal_o3_historical.json"
+            },
+            "no2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_ElCamal_no2.json",
+                "historical": "forecast_latest_Ecuador_Quito_ElCamal_no2_historical.json"
+            },
+            "so2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_ElCamal_so2.json",
+                "historical": "forecast_latest_Ecuador_Quito_ElCamal_so2_historical.json"
+            },
+            "co": {
+                "forecasts": "forecast_latest_Ecuador_Quito_ElCamal_co.json",
+                "historical": "forecast_latest_Ecuador_Quito_ElCamal_co_historical.json"
+            }
+        },
+        "obs_options": {
+            "pm25": {
+                "file": "REMMAQ_Quito_ElCamal_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "pm25 (ugm-3)",
+                "l_name": "Ecuador_Quito_ElCamal",
+                "lat": -0.25,
+                "lon": -78.51,
+                "coefficient_convert": 1.0,
+                "unit": "ugm-3"
+            },
+            "o3": {
+                "file": "REMMAQ_Quito_ElCamal_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "o3 (ugm-3)",
+                "l_name": "Ecuador_Quito_ElCamal",
+                "lat": -0.25,
+                "lon": -78.51,
+                "coefficient_convert": 0.5,
+                "unit": "ugm-3"
+            },
+            "no2": {
+                "file": "REMMAQ_Quito_ElCamal_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "no2 (ugm-3)",
+                "l_name": "Ecuador_Quito_ElCamal",
+                "lat": -0.25,
+                "lon": -78.51,
+                "coefficient_convert": 0.532,
+                "unit": "ugm-3"
+            },
+            "so2": {
+                "file": "REMMAQ_Quito_ElCamal_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "so2 (ugm-3)",
+                "l_name": "Ecuador_Quito_ElCamal",
+                "lat": -0.25,
+                "lon": -78.51,
+                "coefficient_convert": 0.382,
+                "unit": "ugm-3"
+            },
+            "co": {
+                "file": "REMMAQ_Quito_ElCamal_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "co (mgm-3)",
+                "l_name": "Ecuador_Quito_ElCamal",
+                "lat": -0.25,
+                "lon": -78.51,
+                "coefficient_convert": 873,
+                "unit": "mgm-3"
+            }
+        }
+    },
+    "LHQ_EQC": {
+        "location_name": "Ecuador_Quito_Centro",
+        "lat": -0.22,
+        "lon": -78.51,
+        "status": "active",
+        "observation_source": "REMMAQ",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Centro_pm25.json",
+                "historical": "forecast_latest_Ecuador_Quito_Centro_pm25_historical.json"
+            },
+            "o3": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Centro_o3.json",
+                "historical": "forecast_latest_Ecuador_Quito_Centro_o3_historical.json"
+            },
+            "no2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Centro_no2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Centro_no2_historical.json"
+            },
+            "so2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Centro_so2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Centro_so2_historical.json"
+            },
+            "co": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Centro_co.json",
+                "historical": "forecast_latest_Ecuador_Quito_Centro_co_historical.json"
+            }
+        },
+        "obs_options": {
+            "pm25": {
+                "file": "REMMAQ_Quito_Centro_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "pm25 (ugm-3)",
+                "l_name": "Ecuador_Quito_Centro",
+                "lat": -0.22,
+                "lon": -78.51,
+                "coefficient_convert": 1.0,
+                "unit": "ugm-3"
+            },
+            "o3": {
+                "file": "REMMAQ_Quito_Centro_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "o3 (ugm-3)",
+                "l_name": "Ecuador_Quito_Centro",
+                "lat": -0.22,
+                "lon": -78.51,
+                "coefficient_convert": 0.5,
+                "unit": "ugm-3"
+            },
+            "no2": {
+                "file": "REMMAQ_Quito_Centro_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "no2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Centro",
+                "lat": -0.22,
+                "lon": -78.51,
+                "coefficient_convert": 0.532,
+                "unit": "ugm-3"
+            },
+            "so2": {
+                "file": "REMMAQ_Quito_Centro_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "so2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Centro",
+                "lat": -0.22,
+                "lon": -78.51,
+                "coefficient_convert": 0.382,
+                "unit": "ugm-3"
+            },
+            "co": {
+                "file": "REMMAQ_Quito_Centro_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "co (mgm-3)",
+                "l_name": "Ecuador_Quito_Centro",
+                "lat": -0.22,
+                "lon": -78.51,
+                "coefficient_convert": 873,
+                "unit": "mgm-3"
+            }
+        }
+    },
+    "SRI_EQT": {
+        "location_name": "Ecuador_Quito_Tumbaco",
+        "lat": -0.21,
+        "lon": -78.4,
+        "status": "active",
+        "observation_source": "REMMAQ",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Tumbaco_pm25.json",
+                "historical": "forecast_latest_Ecuador_Quito_Tumbaco_pm25_historical.json"
+            },
+            "o3": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Tumbaco_o3.json",
+                "historical": "forecast_latest_Ecuador_Quito_Tumbaco_o3_historical.json"
+            },
+            "no2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Tumbaco_no2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Tumbaco_no2_historical.json"
+            },
+            "so2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Tumbaco_so2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Tumbaco_so2_historical.json"
+            },
+            "co": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Tumbaco_co.json",
+                "historical": "forecast_latest_Ecuador_Quito_Tumbaco_co_historical.json"
+            }
+        },
+        "obs_options": {
+            "pm25": {
+                "file": "REMMAQ_Quito_Tumbaco_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "pm25 (ugm-3)",
+                "l_name": "Ecuador_Quito_Tumbaco",
+                "lat": -0.21,
+                "lon": -78.4,
+                "coefficient_convert": 1.0,
+                "unit": "ugm-3"
+            },
+            "o3": {
+                "file": "REMMAQ_Quito_Tumbaco_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "o3 (ugm-3)",
+                "l_name": "Ecuador_Quito_Tumbaco",
+                "lat": -0.21,
+                "lon": -78.4,
+                "coefficient_convert": 0.5,
+                "unit": "ugm-3"
+            },
+            "no2": {
+                "file": "REMMAQ_Quito_Tumbaco_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "no2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Tumbaco",
+                "lat": -0.21,
+                "lon": -78.4,
+                "coefficient_convert": 0.532,
+                "unit": "ugm-3"
+            },
+            "so2": {
+                "file": "REMMAQ_Quito_Tumbaco_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "so2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Tumbaco",
+                "lat": -0.21,
+                "lon": -78.4,
+                "coefficient_convert": 0.382,
+                "unit": "ugm-3"
+            },
+            "co": {
+                "file": "REMMAQ_Quito_Tumbaco_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "co (mgm-3)",
+                "l_name": "Ecuador_Quito_Tumbaco",
+                "lat": -0.21,
+                "lon": -78.4,
+                "coefficient_convert": 873,
+                "unit": "mgm-3"
+            }
+        }
+    },
+    "OIC_EQB": {
+        "location_name": "Ecuador_Quito_Belisario",
+        "lat": -0.18,
+        "lon": -78.49,
+        "status": "active",
+        "observation_source": "REMMAQ",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Belisario_pm25.json",
+                "historical": "forecast_latest_Ecuador_Quito_Belisario_pm25_historical.json"
+            },
+            "o3": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Belisario_o3.json",
+                "historical": "forecast_latest_Ecuador_Quito_Belisario_o3_historical.json"
+            },
+            "no2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Belisario_no2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Belisario_no2_historical.json"
+            },
+            "so2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Belisario_so2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Belisario_so2_historical.json"
+            },
+            "co": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Belisario_co.json",
+                "historical": "forecast_latest_Ecuador_Quito_Belisario_co_historical.json"
+            }
+        },
+        "obs_options": {
+            "pm25": {
+                "file": "REMMAQ_Quito_Belisario_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "pm25 (ugm-3)",
+                "l_name": "Ecuador_Quito_Belisario",
+                "lat": -0.18,
+                "lon": -78.49,
+                "coefficient_convert": 1.0,
+                "unit": "ugm-3"
+            },
+            "o3": {
+                "file": "REMMAQ_Quito_Belisario_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "o3 (ugm-3)",
+                "l_name": "Ecuador_Quito_Belisario",
+                "lat": -0.18,
+                "lon": -78.49,
+                "coefficient_convert": 0.5,
+                "unit": "ugm-3"
+            },
+            "no2": {
+                "file": "REMMAQ_Quito_Belisario_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "no2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Belisario",
+                "lat": -0.18,
+                "lon": -78.49,
+                "coefficient_convert": 0.532,
+                "unit": "ugm-3"
+            },
+            "so2": {
+                "file": "REMMAQ_Quito_Belisario_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "so2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Belisario",
+                "lat": -0.18,
+                "lon": -78.49,
+                "coefficient_convert": 0.382,
+                "unit": "ugm-3"
+            },
+            "co": {
+                "file": "REMMAQ_Quito_Belisario_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "co (mgm-3)",
+                "l_name": "Ecuador_Quito_Belisario",
+                "lat": -0.18,
+                "lon": -78.49,
+                "coefficient_convert": 873,
+                "unit": "mgm-3"
+            }
+        }
+    },
+    "0X5_EQG": {
+        "location_name": "Ecuador_Quito_Guamani",
+        "lat": -0.3308,
+        "lon": -78.5514,
+        "status": "active",
+        "observation_source": "REMMAQ",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Guamani_pm25.json",
+                "historical": "forecast_latest_Ecuador_Quito_Guamani_pm25_historical.json"
+            },
+            "o3": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Guamani_o3.json",
+                "historical": "forecast_latest_Ecuador_Quito_Guamani_o3_historical.json"
+            },
+            "no2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Guamani_no2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Guamani_no2_historical.json"
+            },
+            "so2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Guamani_so2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Guamani_so2_historical.json"
+            },
+            "co": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Guamani_co.json",
+                "historical": "forecast_latest_Ecuador_Quito_Guamani_co_historical.json"
+            }
+        },
+        "obs_options": {
+            "pm25": {
+                "file": "REMMAQ_Quito_Guamani_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "pm25 (ugm-3)",
+                "l_name": "Ecuador_Quito_Guamani",
+                "lat": -0.3308,
+                "lon": -78.5514,
+                "coefficient_convert": 1.0,
+                "unit": "ugm-3"
+            },
+            "o3": {
+                "file": "REMMAQ_Quito_Guamani_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "o3 (ugm-3)",
+                "l_name": "Ecuador_Quito_Guamani",
+                "lat": -0.3308,
+                "lon": -78.5514,
+                "coefficient_convert": 0.5,
+                "unit": "ugm-3"
+            },
+            "no2": {
+                "file": "REMMAQ_Quito_Guamani_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "no2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Guamani",
+                "lat": -0.3308,
+                "lon": -78.5514,
+                "coefficient_convert": 0.532,
+                "unit": "ugm-3"
+            },
+            "so2": {
+                "file": "REMMAQ_Quito_Guamani_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "so2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Guamani",
+                "lat": -0.3308,
+                "lon": -78.5514,
+                "coefficient_convert": 0.382,
+                "unit": "ugm-3"
+            },
+            "co": {
+                "file": "REMMAQ_Quito_Guamani_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "co (mgm-3)",
+                "l_name": "Ecuador_Quito_Guamani",
+                "lat": -0.3308,
+                "lon": -78.5514,
+                "coefficient_convert": 873,
+                "unit": "mgm-3"
+            }
+        }
+    },
+    "4I6_EQC": {
+        "location_name": "Ecuador_Quito_Carapungo",
+        "lat": -0.0983,
+        "lon": -78.4472,
+        "status": "active",
+        "observation_source": "REMMAQ",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Carapungo_pm25.json",
+                "historical": "forecast_latest_Ecuador_Quito_Carapungo_pm25_historical.json"
+            },
+            "o3": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Carapungo_o3.json",
+                "historical": "forecast_latest_Ecuador_Quito_Carapungo_o3_historical.json"
+            },
+            "no2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Carapungo_no2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Carapungo_no2_historical.json"
+            },
+            "so2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Carapungo_so2.json",
+                "historical": "forecast_latest_Ecuador_Quito_Carapungo_so2_historical.json"
+            },
+            "co": {
+                "forecasts": "forecast_latest_Ecuador_Quito_Carapungo_co.json",
+                "historical": "forecast_latest_Ecuador_Quito_Carapungo_co_historical.json"
+            }
+        },
+        "obs_options": {
+            "pm25": {
+                "file": "REMMAQ_Quito_Carapungo_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "pm25 (ugm-3)",
+                "l_name": "Ecuador_Quito_Carapungo",
+                "lat": -0.0983,
+                "lon": -78.4472,
+                "coefficient_convert": 1.0,
+                "unit": "ugm-3"
+            },
+            "o3": {
+                "file": "REMMAQ_Quito_Carapungo_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "o3 (ugm-3)",
+                "l_name": "Ecuador_Quito_Carapungo",
+                "lat": -0.0983,
+                "lon": -78.4472,
+                "coefficient_convert": 0.5,
+                "unit": "ugm-3"
+            },
+            "no2": {
+                "file": "REMMAQ_Quito_Carapungo_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "no2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Carapungo",
+                "lat": -0.0983,
+                "lon": -78.4472,
+                "coefficient_convert": 0.532,
+                "unit": "ugm-3"
+            },
+            "so2": {
+                "file": "REMMAQ_Quito_Carapungo_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "so2 (ugm-3)",
+                "l_name": "Ecuador_Quito_Carapungo",
+                "lat": -0.0983,
+                "lon": -78.4472,
+                "coefficient_convert": 0.382,
+                "unit": "ugm-3"
+            },
+            "co": {
+                "file": "REMMAQ_Quito_Carapungo_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "co (mgm-3)",
+                "l_name": "Ecuador_Quito_Carapungo",
+                "lat": -0.0983,
+                "lon": -78.4472,
+                "coefficient_convert": 873,
+                "unit": "mgm-3"
+            }
+        }
+    },
+    "YA2_EQL": {
+        "location_name": "Ecuador_Quito_LosChillos",
+        "lat": -0.3,
+        "lon": -78.46,
+        "status": "active",
+        "observation_source": "REMMAQ",
+        "precomputed_forecasts": {
+            "pm25": {
+                "forecasts": "forecast_latest_Ecuador_Quito_LosChillos_pm25.json",
+                "historical": "forecast_latest_Ecuador_Quito_LosChillos_pm25_historical.json"
+            },
+            "o3": {
+                "forecasts": "forecast_latest_Ecuador_Quito_LosChillos_o3.json",
+                "historical": "forecast_latest_Ecuador_Quito_LosChillos_o3_historical.json"
+            },
+            "no2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_LosChillos_no2.json",
+                "historical": "forecast_latest_Ecuador_Quito_LosChillos_no2_historical.json"
+            },
+            "so2": {
+                "forecasts": "forecast_latest_Ecuador_Quito_LosChillos_so2.json",
+                "historical": "forecast_latest_Ecuador_Quito_LosChillos_so2_historical.json"
+            },
+            "co": {
+                "forecasts": "forecast_latest_Ecuador_Quito_LosChillos_co.json",
+                "historical": "forecast_latest_Ecuador_Quito_LosChillos_co_historical.json"
+            }
+        },
+        "obs_options": {
+            "pm25": {
+                "file": "REMMAQ_Quito_LosChillos_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "pm25 (ugm-3)",
+                "l_name": "Ecuador_Quito_LosChillos",
+                "lat": -0.3,
+                "lon": -78.46,
+                "coefficient_convert": 1.0,
+                "unit": "ugm-3"
+            },
+            "o3": {
+                "file": "REMMAQ_Quito_LosChillos_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "o3 (ugm-3)",
+                "l_name": "Ecuador_Quito_LosChillos",
+                "lat": -0.3,
+                "lon": -78.46,
+                "coefficient_convert": 0.5,
+                "unit": "ugm-3"
+            },
+            "no2": {
+                "file": "REMMAQ_Quito_LosChillos_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "no2 (ugm-3)",
+                "l_name": "Ecuador_Quito_LosChillos",
+                "lat": -0.3,
+                "lon": -78.46,
+                "coefficient_convert": 0.532,
+                "unit": "ugm-3"
+            },
+            "so2": {
+                "file": "REMMAQ_Quito_LosChillos_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "so2 (ugm-3)",
+                "l_name": "Ecuador_Quito_LosChillos",
+                "lat": -0.3,
+                "lon": -78.46,
+                "coefficient_convert": 0.382,
+                "unit": "ugm-3"
+            },
+            "co": {
+                "file": "REMMAQ_Quito_LosChillos_201801-202505_data.csv",
+                "time_col": "timestamp",
+                "time_parser": "%Y-%m-%d %H:%M:%S",
+                "val_col": "co (mgm-3)",
+                "l_name": "Ecuador_Quito_LosChillos",
+                "lat": -0.3,
+                "lon": -78.46,
+                "coefficient_convert": 873,
+                "unit": "mgm-3"
+            }
+        }
     }
 }
