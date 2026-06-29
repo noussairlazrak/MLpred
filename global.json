@@ -117313,7 +117313,6 @@
       }
     }
   },
-  "new_pandora_locations": {
     "-129": {
       "location_name": "AliceSprings",
       "lat": -23.758,
@@ -119857,4 +119856,3 @@
       }
     }
   }
-}
